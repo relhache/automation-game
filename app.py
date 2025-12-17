@@ -6,12 +6,10 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'automation_secret'
+app.config['SECRET_KEY'] = 'dhl_automation_secret'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- 25 CUSTOM QUESTIONS ---
-# Target 0 = Good Fit/Automate (Left)
-# Target 100 = Challenging/Manual (Right)
 QUESTIONS = [
     # --- BATCH 1 (Q1-Q12) ---
     {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "exp": "Good! Uniformity is easy for robots."},
@@ -45,8 +43,8 @@ QUESTIONS = [
 
 # --- GLOBAL GAME STATE ---
 current_q_index = -1 
-players = {} # {sid: {'name': 'John', 'score': 0}}
-answers = {} # {sid: {'val': 50, 'time': 1.2}}
+players = {} # {sid: {'name': 'Name', 'score': 0, 'streak': 0}}
+answers = {} 
 question_start_time = 0
 
 @app.route('/')
@@ -62,16 +60,16 @@ def host():
 @socketio.on('join_game')
 def handle_join(data):
     name = data.get('name', 'Anonymous')
-    players[request.sid] = {'name': name, 'score': 0}
+    players[request.sid] = {'name': name, 'score': 0, 'streak': 0}
     emit('wait_screen', {'msg': f"Welcome {name}! Waiting for host..."}, to=request.sid)
-    emit('update_player_count', {'count': len(players)}, broadcast=True)
+    emit('update_player_stats', {'count': len(players), 'answers': len(answers)}, broadcast=True)
 
 @socketio.on('host_start_q')
 def start_question(data):
     global current_q_index, question_start_time, answers
     
     if current_q_index >= len(QUESTIONS) - 1:
-        emit('game_over', sorted_leaderboard()[:5], broadcast=True)
+        emit('game_over', sorted_leaderboard()[:6], broadcast=True)
         return
 
     current_q_index += 1
@@ -84,84 +82,95 @@ def start_question(data):
         'text': q['text'],
         'duration': 12
     }, broadcast=True)
+    
+    # Reset progress bar
+    emit('update_player_stats', {'count': len(players), 'answers': 0}, broadcast=True)
+
+@socketio.on('host_reset_game')
+def reset_game():
+    global current_q_index, players, answers
+    current_q_index = -1
+    answers = {}
+    for sid in players:
+        players[sid]['score'] = 0
+        players[sid]['streak'] = 0
+        emit('wait_screen', {'msg': "Game Reset! Waiting for start..."}, to=sid)
+    
+    emit('reset_confirm', {}, broadcast=True)
 
 @socketio.on('submit_answer')
 def handle_answer(data):
     if request.sid not in players: return
-    
-    # Calculate time taken
     time_taken = time.time() - question_start_time
-    if time_taken > 13: return # Late buffer
+    if time_taken > 13: return 
     
     val = int(data['value'])
     answers[request.sid] = {'val': val, 'time': time_taken}
+    
+    # Update Host Progress Bar
+    emit('update_player_stats', {'count': len(players), 'answers': len(answers)}, broadcast=True)
 
 @socketio.on('host_show_results')
 def show_results():
     global players
+    if current_q_index < 0: return
     q = QUESTIONS[current_q_index]
     target = q['target']
     
     # 1. Identify Correct Players
     correct_players = []
-    
     for sid, ans in answers.items():
         user_val = ans['val']
-        user_time = ans['time']
-        
-        # Check correctness (Margin of error logic)
         is_correct = False
+        # Logic: 0 is Good (0-45), 100 is Challenging (55-100)
         if target == 0 and user_val < 45: is_correct = True
         if target == 100 and user_val > 55: is_correct = True
         
         if is_correct:
-            correct_players.append({
-                'sid': sid,
-                'time': user_time
-            })
+            correct_players.append({'sid': sid, 'time': ans['time']})
     
-    # 2. Find the Fastest Correct Player
+    # 2. Find Fastest
     fastest_sid = None
     if correct_players:
-        # Sort by time (ascending) -> first one is fastest
         correct_players.sort(key=lambda x: x['time'])
         fastest_sid = correct_players[0]['sid']
 
-    # 3. Assign Points and Feedback
-    for sid in players.keys(): # Loop through all connected players
+    # 3. Assign Points, Streaks & Feedback
+    for sid in players.keys():
         points_earned = 0
         is_correct = False
         is_fastest = False
         
-        # Check if they answered this round
         if sid in answers:
             user_val = answers[sid]['val']
-            # Re-check logic for individual feedback
             if (target == 0 and user_val < 45) or (target == 100 and user_val > 55):
                 is_correct = True
                 points_earned = 100
-                
-                # Apply Speed Bonus ONLY to the fastest
                 if sid == fastest_sid:
                     points_earned += 10
                     is_fastest = True
         
-        # Update Total Score
+        # Streak Logic
+        if is_correct:
+            players[sid]['streak'] += 1
+        else:
+            players[sid]['streak'] = 0
+            
         players[sid]['score'] += points_earned
         
-        # Send Personal Feedback
         emit('feedback', {
             'correct': is_correct,
             'is_fastest': is_fastest,
             'points': points_earned,
+            'streak': players[sid]['streak'],
+            'target': target, # Sent so we can show visual zone
             'explanation': q['exp']
         }, to=sid)
 
-    # 4. Send Stats to Host
     emit('host_stats', {
         'correct_count': len(correct_players),
         'total': len(answers),
-        'leaderboard': sorted_leaderboard()[:5]
+        'leaderboard': sorted_leaderboard()[:6] # Top 6
     }, to=request.sid)
 
 def sorted_leaderboard():
