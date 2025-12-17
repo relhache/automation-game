@@ -20,7 +20,6 @@
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 20px; }
 
-        /* Modal */
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 9999;}
         .modal-content { background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; text-align: center; border: 5px solid #FFCC00; }
         table { width: 100%; border-collapse: collapse; }
@@ -50,11 +49,20 @@
         <button id="next_btn" class="btn-green" onclick="startQ()">Start Next Question</button>
         
         <br>
-        <button class="btn-blue" onclick="showLeaderboardAll()">📢 SHOW LEADERBOARD TO ALL</button>
+        <button class="btn-blue" onclick="showLeaderboardAll()">📢 FORCE LEADERBOARD (Show All)</button>
         <button class="btn-grey" onclick="hideLeaderboardAll()">❌ Hide Leaderboard</button>
         
         <br><br>
         <button class="btn-grey" onclick="resetGame()">⚠ Reset Game</button>
+    </div>
+
+    <div id="lb_modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>🏆 LEADERBOARD</h2>
+            <table id="lb_table"></table>
+            <br>
+            <button class="btn-grey" onclick="closeLb()">Close View</button>
+        </div>
     </div>
 
     <script>
@@ -76,11 +84,8 @@
             btn.style.background = "#999";
             btn.innerHTML = "Question Running...";
             
-            // Hide previous answer
             document.getElementById('q_ans_host').classList.add('hidden');
-            // Ensure leaderboard is hidden on phones
-            socket.emit('host_hide_leaderboard');
-            
+            socket.emit('host_hide_leaderboard'); // Auto-hide lb on phones
             socket.emit('host_start_q', {});
             document.getElementById('status').innerHTML = "Question In Progress...";
         }
@@ -102,22 +107,24 @@
             ansSpan.classList.remove('hidden');
         });
 
-        function showLeaderboardAll() {
-            socket.emit('host_trigger_leaderboard');
-        }
+        socket.on('show_leaderboard_all', function(data) {
+            var table = document.getElementById('lb_table');
+            table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
+            data.leaderboard.forEach((p, i) => {
+                table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
+            });
+            document.getElementById('lb_modal').classList.remove('hidden');
+        });
 
-        function hideLeaderboardAll() {
-            socket.emit('host_hide_leaderboard');
-        }
+        socket.on('hide_leaderboard_all', function() {
+            document.getElementById('lb_modal').classList.add('hidden');
+        });
 
-        function toggleNames() {
-            var el = document.getElementById('p_names');
-            el.classList.toggle('hidden');
-        }
-
-        function resetGame() {
-            if(confirm("RESET GAME?")) socket.emit('host_reset_game');
-        }
+        function showLeaderboardAll() { socket.emit('host_trigger_leaderboard'); }
+        function hideLeaderboardAll() { socket.emit('host_hide_leaderboard'); }
+        function closeLb() { document.getElementById('lb_modal').classList.add('hidden'); }
+        function toggleNames() { document.getElementById('p_names').classList.toggle('hidden'); }
+        function resetGame() { if(confirm("RESET?")) socket.emit('host_reset_game'); }
     </script>
 </body>
 </html>
