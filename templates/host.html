@@ -1,30 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Host Dashboard</title>
+    <title>DHL Host Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; }
-        .card { background: white; padding: 20px; margin: 10px auto; max-width: 600px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #3498db; color: white; border: none; border-radius: 5px; margin: 10px; }
-        .btn-green { background: #2ecc71; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; text-align: center; background: #e0e0e0; }
+        
+        .card { background: white; padding: 30px; margin: 20px auto; max-width: 800px; border-radius: 5px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #D40511; }
+        
+        .btn { padding: 15px 40px; font-size: 22px; cursor: pointer; background: #D40511; color: white; border: none; border-radius: 4px; margin: 10px; font-weight: bold; text-transform: uppercase;}
+        .btn-green { background: #2ecc71; } /* Keep green for 'Start' to differentiate */
+        .btn-grey { background: #555; }
+        
         .hidden { display: none; }
+        
+        /* Leaderboard Table */
         table { width: 100%; margin-top: 20px; border-collapse: collapse; }
-        th, td { padding: 10px; border-bottom: 1px solid #ddd; }
+        th { background: #FFCC00; color: #D40511; padding: 15px; }
+        td { padding: 15px; border-bottom: 1px solid #ddd; font-size: 20px; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        
+        /* Progress Bar */
+        .progress-container { width: 100%; background-color: #ddd; height: 30px; border-radius: 5px; margin: 20px 0; overflow: hidden;}
+        .progress-bar { height: 100%; width: 0%; background-color: #D40511; transition: width 0.5s; text-align: center; color: white; line-height: 30px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>Host Control</h1>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="200">
+    <h1>HOST CONTROL</h1>
     
     <div class="card">
-        <h2 id="status">Lobby: Waiting for players...</h2>
+        <h2 id="status">Lobby Open</h2>
         <h3 id="player_count">0 Players Joined</h3>
+        
+        <div class="progress-container">
+            <div id="p_bar" class="progress-bar">0%</div>
+        </div>
+
         <button class="btn btn-green" onclick="startQ()">Start Next Question</button>
         <button class="btn" onclick="reveal()">Reveal Results</button>
+        <br><br>
+        <button class="btn btn-grey" onclick="resetGame()">⚠ Reset Game</button>
     </div>
 
     <div id="leaderboard_card" class="card hidden">
-        <h2>🏆 Leaderboard</h2>
+        <h2>🏆 TOP 6 LEADERBOARD</h2>
         <table id="lb_table">
             <tr><th>Rank</th><th>Name</th><th>Score</th></tr>
         </table>
@@ -34,22 +54,42 @@
         var socket = io();
         var qNum = 0;
 
-        socket.on('update_player_count', function(data) {
+        socket.on('update_player_stats', function(data) {
             document.getElementById('player_count').innerHTML = data.count + " Players Joined";
+            
+            // Update Progress Bar (Answers / Total Players)
+            if(data.count > 0) {
+                var pct = Math.round((data.answers / data.count) * 100);
+                var bar = document.getElementById('p_bar');
+                bar.style.width = pct + "%";
+                bar.innerHTML = data.answers + "/" + data.count + " Answered";
+            }
         });
 
         function startQ() {
-            // Check for Leaderboard breaks
             if (qNum == 12 || qNum == 25) {
-                alert("Leaderboard Break! Check the scores below.");
+                alert("LEADERBOARD BREAK! Announce the scores below.");
             }
             socket.emit('host_start_q', {});
-            document.getElementById('status').innerHTML = "Question " + (qNum + 1) + " Running (12s)...";
+            document.getElementById('status').innerHTML = "Question " + (qNum + 1) + " Running...";
             document.getElementById('leaderboard_card').classList.add('hidden');
+        }
+
+        function resetGame() {
+            if(confirm("⚠ RESET GAME: This will wipe all scores and start from Q1. Confirm?")) {
+                socket.emit('host_reset_game');
+            }
         }
 
         socket.on('new_question', function(data) {
             qNum = data.q_id;
+        });
+
+        socket.on('reset_confirm', function() {
+            qNum = 0;
+            document.getElementById('status').innerHTML = "Game Reset. Ready to start.";
+            document.getElementById('leaderboard_card').classList.add('hidden');
+            document.getElementById('p_bar').style.width = "0%";
         });
 
         function reveal() {
@@ -59,11 +99,10 @@
         socket.on('host_stats', function(data) {
             document.getElementById('status').innerHTML = "Result: " + data.correct_count + "/" + data.total + " Correct";
             
-            // Update Leaderboard
             var table = document.getElementById('lb_table');
-            // clear old rows
             while(table.rows.length > 1) { table.deleteRow(1); }
             
+            // TOP 6
             data.leaderboard.forEach((p, index) => {
                 var row = table.insertRow();
                 row.insertCell(0).innerHTML = index + 1;
