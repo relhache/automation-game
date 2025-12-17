@@ -64,7 +64,6 @@
 </head>
 <body>
     <div class="logo-container">
-        [Image of DHL Logo]
         <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" class="logo-img">
     </div>
 
@@ -122,8 +121,9 @@
         // Slider Text Update
         document.getElementById('slider').oninput = function() {
             var txt = this.value == "0" ? "Selected: IDEAL" : "Selected: CHALLENGING";
-            document.getElementById('slider_val_text').innerHTML = txt;
-            document.getElementById('slider_val_text').style.color = this.value == "0" ? "#27ae60" : "#D40511";
+            var label = document.getElementById('slider_val_text');
+            label.innerHTML = txt;
+            label.style.color = this.value == "0" ? "#27ae60" : "#D40511";
         }
 
         function joinGame() {
@@ -187,36 +187,4 @@
             speedBonus.classList.add('hidden');
             streakBonus.classList.add('hidden');
 
-            document.getElementById('fb_correct_text').innerHTML = data.correct_text;
-
-            if(data.correct) {
-                title.innerHTML = "✅ CORRECT";
-                title.style.color = "green";
-                points.innerHTML = "+" + data.points + " pts";
-                
-                // Fire Confetti
-                try {
-                    confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00', '#FFFFFF'] });
-                } catch(e) { console.log("Confetti blocked"); }
-
-                if(data.is_fastest) speedBonus.classList.remove('hidden');
-                if(data.streak_bonus) streakBonus.classList.remove('hidden');
-
-            } else {
-                title.innerHTML = "❌ INCORRECT";
-                title.style.color = "#D40511";
-                points.innerHTML = "+0 pts";
-            }
-            
-            document.getElementById('fb_exp').innerHTML = data.explanation;
-        });
-
-        function showScreen(id) {
-            ['login_screen', 'wait_screen', 'game_screen', 'feedback_screen'].forEach(s => {
-                document.getElementById(s).classList.add('hidden');
-            });
-            document.getElementById(id).classList.remove('hidden');
-        }
-    </script>
-</body>
-</html>
+            document.getElementById('fb_correct_text').innerHTML = data.correct_
