@@ -4,49 +4,78 @@
     <title>Host Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 40px; text-align: center; }
-        .stats-box { border: 2px solid #333; padding: 20px; display: inline-block; border-radius: 10px; margin: 20px; }
-        .big-number { font-size: 48px; font-weight: bold; color: #ff4b4b; }
-        button { padding: 10px 20px; font-size: 20px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px;}
+        body { font-family: sans-serif; padding: 20px; text-align: center; background: #f0f0f0; }
+        .card { background: white; padding: 20px; margin: 10px auto; max-width: 600px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #3498db; color: white; border: none; border-radius: 5px; margin: 10px; }
+        .btn-green { background: #2ecc71; }
+        .hidden { display: none; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; }
     </style>
 </head>
 <body>
-    <h1>Host Dashboard</h1>
-    <h2 id="current_q">Loading Question...</h2>
-
-    <div class="stats-box">
-        <p>Players Answered</p>
-        <div id="count" class="big-number">0</div>
-    </div>
-
-    <div class="stats-box">
-        <p>Average Score</p>
-        <div id="avg" class="big-number">0%</div>
-    </div>
+    <h1>Host Control</h1>
     
-    <br><br>
-    <button onclick="nextQ()">Next Question >></button>
+    <div class="card">
+        <h2 id="status">Lobby: Waiting for players...</h2>
+        <h3 id="player_count">0 Players Joined</h3>
+        <button class="btn btn-green" onclick="startQ()">Start Next Question</button>
+        <button class="btn" onclick="reveal()">Reveal Results</button>
+    </div>
+
+    <div id="leaderboard_card" class="card hidden">
+        <h2>🏆 Leaderboard</h2>
+        <table id="lb_table">
+            <tr><th>Rank</th><th>Name</th><th>Score</th></tr>
+        </table>
+    </div>
 
     <script>
         var socket = io();
+        var qNum = 0;
+
+        socket.on('update_player_count', function(data) {
+            document.getElementById('player_count').innerHTML = data.count + " Players Joined";
+        });
+
+        function startQ() {
+            // Check for Leaderboard breaks
+            if (qNum == 12 || qNum == 25) {
+                alert("Leaderboard Break! Check the scores below.");
+            }
+            socket.emit('host_start_q', {});
+            document.getElementById('status').innerHTML = "Question " + (qNum + 1) + " Running (12s)...";
+            document.getElementById('leaderboard_card').classList.add('hidden');
+        }
 
         socket.on('new_question', function(data) {
-            document.getElementById("current_q").innerHTML = "Current: " + data.text;
+            qNum = data.q_id;
         });
 
-        socket.on('update_stats', function(data) {
-            document.getElementById("count").innerHTML = data.count;
-            document.getElementById("avg").innerHTML = Math.round(data.average) + "%";
-        });
-
-        socket.on('reset_stats', function() {
-            document.getElementById("count").innerHTML = "0";
-            document.getElementById("avg").innerHTML = "0%";
-        });
-
-        function nextQ() {
-            socket.emit('next_question');
+        function reveal() {
+            socket.emit('host_show_results');
         }
+
+        socket.on('host_stats', function(data) {
+            document.getElementById('status').innerHTML = "Result: " + data.correct_count + "/" + data.total + " Correct";
+            
+            // Update Leaderboard
+            var table = document.getElementById('lb_table');
+            // clear old rows
+            while(table.rows.length > 1) { table.deleteRow(1); }
+            
+            data.leaderboard.forEach((p, index) => {
+                var row = table.insertRow();
+                row.insertCell(0).innerHTML = index + 1;
+                row.insertCell(1).innerHTML = p.name;
+                row.insertCell(2).innerHTML = p.score;
+            });
+            document.getElementById('leaderboard_card').classList.remove('hidden');
+        });
+
+        socket.on('game_over', function(data) {
+             document.getElementById('status').innerHTML = "GAME OVER";
+        });
     </script>
 </body>
 </html>
