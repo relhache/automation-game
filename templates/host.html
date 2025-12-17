@@ -25,6 +25,11 @@
         table { width: 100%; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 10px; }
         td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 18px; }
+
+        /* VOTE BALANCE BAR */
+        .vote-bar-container { display: flex; width: 100%; height: 25px; border-radius: 12px; overflow: hidden; margin-top: 5px; background: #ddd; }
+        .vote-ideal { background: #2ecc71; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
+        .vote-challenging { background: #D40511; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
     </style>
 </head>
 <body>
@@ -39,6 +44,12 @@
         
         <div style="background:#ddd; border-radius:5px; height:30px; margin:15px 0; overflow:hidden;">
             <div id="p_bar" style="height:100%; width:0%; background:#D40511; color:white; line-height:30px;">0/0</div>
+        </div>
+
+        <h4>Audience Vote Split:</h4>
+        <div class="vote-bar-container">
+            <div id="v_ideal" class="vote-ideal" style="width: 50%;">Ideal: 0</div>
+            <div id="v_challenging" class="vote-challenging" style="width: 50%;">Challenging: 0</div>
         </div>
         
         <div id="current_q_box">
@@ -76,6 +87,19 @@
                 document.getElementById('p_bar').style.width = pct + "%";
                 document.getElementById('p_bar').innerHTML = data.answers + "/" + data.count;
             }
+
+            // UPDATE VOTE BAR
+            if(data.votes) {
+                var total = data.votes.ideal + data.votes.challenging;
+                if(total > 0) {
+                    var iPct = (data.votes.ideal / total) * 100;
+                    var cPct = (data.votes.challenging / total) * 100;
+                    document.getElementById('v_ideal').style.width = iPct + "%";
+                    document.getElementById('v_ideal').innerHTML = data.votes.ideal;
+                    document.getElementById('v_challenging').style.width = cPct + "%";
+                    document.getElementById('v_challenging').innerHTML = data.votes.challenging;
+                }
+            }
         });
 
         function startQ() {
@@ -85,13 +109,18 @@
             btn.innerHTML = "Question Running...";
             
             document.getElementById('q_ans_host').classList.add('hidden');
-            socket.emit('host_hide_leaderboard'); // Auto-hide lb on phones
+            socket.emit('host_hide_leaderboard');
             socket.emit('host_start_q', {});
             document.getElementById('status').innerHTML = "Question In Progress...";
         }
 
         socket.on('new_question', function(data) {
             document.getElementById('q_text_host').innerHTML = "Q" + data.q_id + ": " + data.text;
+            // Reset votes display for new question
+            document.getElementById('v_ideal').style.width = "50%";
+            document.getElementById('v_ideal').innerHTML = "0";
+            document.getElementById('v_challenging').style.width = "50%";
+            document.getElementById('v_challenging').innerHTML = "0";
         });
 
         socket.on('host_round_end', function(data) {
