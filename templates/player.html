@@ -6,19 +6,32 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 10px; background: #e0e0e0; color: #333; }
-        .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; }
-        input[type=text] { padding: 10px; font-size: 16px; width: 80%; margin-bottom: 10px; }
-        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; }
-        button:disabled { background: #999; }
+        body { 
+            font-family: 'Frutiger', 'Segoe UI', sans-serif; 
+            text-align: center; 
+            padding: 10px; 
+            color: #333;
+            background: linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+        .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
+        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #999; cursor: not-allowed; }
         .hidden { display: none; }
         
-        input[type=range] { width: 100%; height: 30px; accent-color: #D40511; margin: 20px 0; }
-        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; }
-        .lbl-left { color: #27ae60; }
+        input[type=range] { width: 100%; height: 40px; accent-color: #D40511; margin: 25px 0; cursor: pointer; }
+        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-transform: uppercase; }
+        .lbl-left { color: #27ae60; text-align: left; }
         .lbl-right { color: #D40511; text-align: right; }
         
-        #timer_bar { height: 10px; background: #FFCC00; width: 100%; }
+        #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
+        
+        .big-score { font-size: 40px; font-weight: bold; color: #D40511; margin: 10px 0; }
+        .bonus-tag { background: #FFCC00; color: #D40511; padding: 5px 10px; border-radius: 15px; font-weight: bold; display: inline-block; margin: 5px; }
     </style>
 </head>
 <body>
@@ -28,7 +41,6 @@
         <h3>Join Game</h3>
         <input type="text" id="username" placeholder="Your Name">
         <button onclick="joinGame()">Join</button>
-        <p id="status_msg" style="color:red; font-size:12px;"></p>
     </div>
 
     <div id="wait_screen" class="hidden box">
@@ -36,25 +48,27 @@
     </div>
 
     <div id="game_screen" class="hidden box">
-        <div style="background:#ddd; height:10px;"><div id="timer_bar"></div></div>
-        <h3 id="q_text">Question...</h3>
+        <div style="background:#ddd; height:10px; border-radius:5px; margin-bottom:15px;"><div id="timer_bar"></div></div>
+        <h3 id="q_text" style="min-height: 60px;">Loading...</h3>
         
         <div class="labels">
-            <div class="lbl-left">IDEAL</div>
-            <div class="lbl-right">CHALLENGING</div>
+            <div class="lbl-left">IDEAL<br>(Automate)</div>
+            <div class="lbl-right">CHALLENGING<br>(Manual)</div>
         </div>
-        <input type="range" id="slider" min="0" max="100" step="100" value="0">
-        <p id="slider_val">Selected: IDEAL</p>
         
-        <button id="submit_btn" onclick="submitAnswer()">SUBMIT</button>
+        <input type="range" id="slider" min="0" max="100" step="100" value="0">
+        <p id="slider_val" style="font-weight:bold; color:#27ae60;">Selected: IDEAL</p>
+        
+        <button id="submit_btn" onclick="submitAnswer()">SUBMIT ANSWER</button>
     </div>
 
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
         <p>Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
-        <h1 id="fb_pts"></h1>
-        <p id="fb_bonus" style="color:#D40511; font-weight:bold;"></p>
-        <p id="fb_exp" style="font-size:14px; color:#666;"></p>
+        <div class="big-score" id="fb_pts"></div>
+        <div id="fb_bonuses"></div>
+        <p id="fb_exp" style="color:#666; font-style:italic; margin-top:15px; border-top:1px solid #eee; padding-top:10px;"></p>
+        <p style="font-size:12px; margin-top:20px;">Waiting for next question...</p>
     </div>
 
     <script>
@@ -64,18 +78,15 @@
         // Visual Slider Feedback
         document.getElementById('slider').oninput = function() {
             var txt = this.value == "0" ? "Selected: IDEAL" : "Selected: CHALLENGING";
-            document.getElementById('slider_val').innerHTML = txt;
-            document.getElementById('slider_val').style.color = this.value == "0" ? "#27ae60" : "#D40511";
+            var color = this.value == "0" ? "#27ae60" : "#D40511";
+            var el = document.getElementById('slider_val');
+            el.innerHTML = txt;
+            el.style.color = color;
         };
-
-        socket.on('connect', function() {
-            document.getElementById('status_msg').innerHTML = "Connected to server!";
-            setTimeout(() => { document.getElementById('status_msg').innerHTML = ""; }, 2000);
-        });
 
         function joinGame() {
             var name = document.getElementById('username').value;
-            if(!name) return;
+            if(!name) return alert("Enter Name");
             socket.emit('join_game', {name: name});
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.remove('hidden');
@@ -90,24 +101,30 @@
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // Reset
+            // Reset UI
             document.getElementById('slider').value = 0;
             document.getElementById('slider_val').innerHTML = "Selected: IDEAL";
-            document.getElementById('submit_btn').disabled = false;
-            document.getElementById('submit_btn').innerHTML = "SUBMIT";
+            document.getElementById('slider_val').style.color = "#27ae60";
+            
+            var btn = document.getElementById('submit_btn');
+            btn.disabled = false;
+            btn.innerHTML = "SUBMIT ANSWER";
+            btn.style.background = "#D40511";
 
-            // Timer
+            // Timer Logic
             var timeLeft = data.duration;
             var bar = document.getElementById('timer_bar');
             bar.style.width = "100%";
+            
             if(currentTimer) clearInterval(currentTimer);
             currentTimer = setInterval(function() {
                 timeLeft--;
                 bar.style.width = (timeLeft/data.duration * 100) + "%";
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
-                    document.getElementById('submit_btn').disabled = true;
-                    document.getElementById('submit_btn').innerHTML = "TIME UP";
+                    btn.disabled = true;
+                    btn.innerHTML = "TIME UP - Waiting for Results...";
+                    btn.style.background = "#999";
                 }
             }, 1000);
         });
@@ -115,30 +132,35 @@
         function submitAnswer() {
             var val = document.getElementById('slider').value;
             socket.emit('submit_answer', {value: val});
-            document.getElementById('submit_btn').disabled = true;
-            document.getElementById('submit_btn').innerHTML = "SENT";
+            var btn = document.getElementById('submit_btn');
+            btn.disabled = true;
+            btn.innerHTML = "ANSWER SENT";
+            btn.style.background = "#2ecc71"; // Turn green to show submitted
         }
 
+        // AUTOMATIC REVEAL LISTENER
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
-            document.getElementById('fb_ans').innerHTML = data.correct_text;
-            document.getElementById('fb_pts').innerHTML = "+" + data.points;
             
             var title = document.getElementById('fb_title');
             if(data.correct) {
                 title.innerHTML = "✅ CORRECT";
                 title.style.color = "green";
-                try { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] }); } catch(e){}
+                // Confetti Trigger
+                try { confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] }); } catch(e){}
             } else {
                 title.innerHTML = "❌ WRONG";
-                title.style.color = "red";
+                title.style.color = "#D40511";
             }
-            
-            var bonusMsg = "";
-            if(data.is_fastest) bonusMsg += "⚡ FASTEST! ";
-            if(data.streak_bonus) bonusMsg += "🔥 STREAK BONUS! ";
-            document.getElementById('fb_bonus').innerHTML = bonusMsg;
+
+            document.getElementById('fb_ans').innerHTML = data.correct_text;
+            document.getElementById('fb_pts').innerHTML = "+" + data.points;
             document.getElementById('fb_exp').innerHTML = data.explanation;
+
+            var bonusHtml = "";
+            if(data.is_fastest) bonusHtml += "<span class='bonus-tag'>⚡ FASTEST (+10)</span>";
+            if(data.streak_bonus) bonusHtml += "<span class='bonus-tag'>🔥 STREAK (+5)</span>";
+            document.getElementById('fb_bonuses').innerHTML = bonusHtml;
         });
 
         function showScreen(id) {
