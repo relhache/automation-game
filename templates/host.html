@@ -4,34 +4,45 @@
     <title>DHL Host Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; text-align: center; background: #e0e0e0; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            padding: 20px; 
+            text-align: center; 
+            background: linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
+            background-size: cover;
+        }
         
-        .card { background: white; padding: 30px; margin: 20px auto; max-width: 800px; border-radius: 5px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #D40511; }
+        .card { background: white; padding: 30px; margin: 20px auto; max-width: 800px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #D40511; }
         
-        .btn { padding: 15px 40px; font-size: 22px; cursor: pointer; background: #D40511; color: white; border: none; border-radius: 4px; margin: 10px; font-weight: bold; text-transform: uppercase;}
-        .btn-green { background: #2ecc71; } /* Keep green for 'Start' to differentiate */
-        .btn-grey { background: #555; }
+        .btn { padding: 15px 40px; font-size: 20px; cursor: pointer; background: #D40511; color: white; border: none; border-radius: 4px; margin: 10px; font-weight: bold; text-transform: uppercase;}
+        .btn-green { background: #2ecc71; }
+        .btn-grey { background: #555; font-size: 14px; padding: 10px 20px;}
         
         .hidden { display: none; }
         
-        /* Leaderboard Table */
         table { width: 100%; margin-top: 20px; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 15px; }
-        td { padding: 15px; border-bottom: 1px solid #ddd; font-size: 20px; }
+        td { padding: 15px; border-bottom: 1px solid #ddd; font-size: 18px; }
         tr:nth-child(even) { background-color: #f9f9f9; }
         
-        /* Progress Bar */
         .progress-container { width: 100%; background-color: #ddd; height: 30px; border-radius: 5px; margin: 20px 0; overflow: hidden;}
         .progress-bar { height: 100%; width: 0%; background-color: #D40511; transition: width 0.5s; text-align: center; color: white; line-height: 30px; font-weight: bold; }
+        
+        #player_list_div { text-align: left; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; margin-top: 10px; max-height: 200px; overflow-y: auto;}
+        .player-tag { display: inline-block; background: #ddd; padding: 5px 10px; margin: 3px; border-radius: 15px; font-size: 12px;}
     </style>
 </head>
 <body>
+    
     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="200">
     <h1>HOST CONTROL</h1>
     
     <div class="card">
         <h2 id="status">Lobby Open</h2>
         <h3 id="player_count">0 Players Joined</h3>
+        
+        <button class="btn-grey" onclick="togglePlayers()">Show/Hide Player Names</button>
+        <div id="player_list_div" class="hidden"></div>
         
         <div class="progress-container">
             <div id="p_bar" class="progress-bar">0%</div>
@@ -44,6 +55,7 @@
     </div>
 
     <div id="leaderboard_card" class="card hidden">
+        <h2 id="answer_reveal_host" style="color:#27ae60;"></h2>
         <h2>🏆 TOP 6 LEADERBOARD</h2>
         <table id="lb_table">
             <tr><th>Rank</th><th>Name</th><th>Score</th></tr>
@@ -57,7 +69,16 @@
         socket.on('update_player_stats', function(data) {
             document.getElementById('player_count').innerHTML = data.count + " Players Joined";
             
-            // Update Progress Bar (Answers / Total Players)
+            // Update Player List
+            var listDiv = document.getElementById('player_list_div');
+            listDiv.innerHTML = "";
+            if(data.names) {
+                data.names.forEach(n => {
+                    listDiv.innerHTML += `<span class="player-tag">${n}</span>`;
+                });
+            }
+
+            // Update Progress Bar
             if(data.count > 0) {
                 var pct = Math.round((data.answers / data.count) * 100);
                 var bar = document.getElementById('p_bar');
@@ -66,9 +87,15 @@
             }
         });
 
+        function togglePlayers() {
+            var d = document.getElementById('player_list_div');
+            if(d.classList.contains('hidden')) d.classList.remove('hidden');
+            else d.classList.add('hidden');
+        }
+
         function startQ() {
             if (qNum == 12 || qNum == 25) {
-                alert("LEADERBOARD BREAK! Announce the scores below.");
+                alert("LEADERBOARD BREAK!");
             }
             socket.emit('host_start_q', {});
             document.getElementById('status').innerHTML = "Question " + (qNum + 1) + " Running...";
@@ -76,7 +103,7 @@
         }
 
         function resetGame() {
-            if(confirm("⚠ RESET GAME: This will wipe all scores and start from Q1. Confirm?")) {
+            if(confirm("⚠ RESET GAME: Confirm?")) {
                 socket.emit('host_reset_game');
             }
         }
@@ -87,7 +114,7 @@
 
         socket.on('reset_confirm', function() {
             qNum = 0;
-            document.getElementById('status').innerHTML = "Game Reset. Ready to start.";
+            document.getElementById('status').innerHTML = "Game Reset.";
             document.getElementById('leaderboard_card').classList.add('hidden');
             document.getElementById('p_bar').style.width = "0%";
         });
@@ -99,10 +126,12 @@
         socket.on('host_stats', function(data) {
             document.getElementById('status').innerHTML = "Result: " + data.correct_count + "/" + data.total + " Correct";
             
+            // Show Correct Answer on Host Screen
+            document.getElementById('answer_reveal_host').innerHTML = "Correct Answer: " + data.correct_text;
+
             var table = document.getElementById('lb_table');
             while(table.rows.length > 1) { table.deleteRow(1); }
             
-            // TOP 6
             data.leaderboard.forEach((p, index) => {
                 var row = table.insertRow();
                 row.insertCell(0).innerHTML = index + 1;
@@ -110,10 +139,6 @@
                 row.insertCell(2).innerHTML = p.score;
             });
             document.getElementById('leaderboard_card').classList.remove('hidden');
-        });
-
-        socket.on('game_over', function(data) {
-             document.getElementById('status').innerHTML = "GAME OVER";
         });
     </script>
 </body>
