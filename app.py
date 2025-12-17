@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret_key_123'
+app.config['SECRET_KEY'] = 'dhl_autostore_secret_v2'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- QUESTIONS LIST ---
@@ -40,8 +40,8 @@ QUESTIONS = [
 
 # --- STATE ---
 current_q_index = -1 
-players = {} 
-answers = {} 
+players = {} # Key: SID, Value: {name, score, streak}
+answers = {} # Key: SID, Value: {val, time}
 question_start_time = 0
 
 @app.route('/')
@@ -53,15 +53,13 @@ def host():
     return render_template('host.html')
 
 # --- SOCKETS ---
-@socketio.on('connect')
-def on_connect():
-    print("Client connected")
 
 @socketio.on('join_game')
 def handle_join(data):
     name = data.get('name', 'Anonymous')
     players[request.sid] = {'name': name, 'score': 0, 'streak': 0}
     emit('wait_screen', {'msg': f"Welcome {name}! Waiting for host..."}, to=request.sid)
+    
     # Broadcast update to host
     player_names = [p['name'] for p in players.values()]
     emit('update_stats', {'count': len(players), 'answers': len(answers), 'names': player_names}, broadcast=True)
@@ -79,70 +77,70 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
+    # 1. Send Question to Everyone
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
-        'duration': 12
+        'duration': 12,
+        'host_ans': q['ans_text'] # Host sees answer immediately
     }, broadcast=True)
     
     # Reset progress bar on host
     player_names = [p['name'] for p in players.values()]
     emit('update_stats', {'count': len(players), 'answers': 0, 'names': player_names}, broadcast=True)
 
-@socketio.on('submit_answer')
-def handle_answer(data):
-    if request.sid not in players: return
-    time_taken = time.time() - question_start_time
+    # 2. SERVER AUTOMATION: Wait 12 seconds + 2 seconds buffer
+    eventlet.sleep(14) 
     
-    if time_taken > 15: return # 15s buffer
-    
-    val = int(data['value'])
-    answers[request.sid] = {'val': val, 'time': time_taken}
-    
-    player_names = [p['name'] for p in players.values()]
-    emit('update_stats', {'count': len(players), 'answers': len(answers), 'names': player_names}, broadcast=True)
+    # 3. Automatically Calculate and Reveal
+    evaluate_round()
 
-@socketio.on('host_show_results')
-def show_results():
-    if current_q_index < 0: return
+def evaluate_round():
     q = QUESTIONS[current_q_index]
     target = q['target']
     
-    correct_players = []
+    # A. Find Correct Answers
+    correct_sids = []
     for sid, ans in answers.items():
         if ans['val'] == target:
-            correct_players.append({'sid': sid, 'time': ans['time']})
-    
+            correct_sids.append({'sid': sid, 'time': ans['time']})
+            
+    # B. Find Fastest
     fastest_sid = None
-    if correct_players:
-        correct_players.sort(key=lambda x: x['time'])
-        fastest_sid = correct_players[0]['sid']
+    if correct_sids:
+        correct_sids.sort(key=lambda x: x['time']) # Sort by lowest time
+        fastest_sid = correct_sids[0]['sid']
 
+    # C. Loop Through ALL Connected Players (Fixes "Only one player" bug)
     for sid in players:
         points = 0
         streak_bonus = False
         is_correct = False
         is_fastest = False
         
+        # Check if this specific player answered
         if sid in answers:
             if answers[sid]['val'] == target:
                 is_correct = True
-                points = 100
+                points = 100 # Base Points
+                
                 if sid == fastest_sid:
-                    points += 10
+                    points += 10 # Speed Bonus
                     is_fastest = True
         
+        # Streak Logic
         if is_correct:
             players[sid]['streak'] += 1
-            if players[sid]['streak'] == 3:
+            if players[sid]['streak'] >= 3:
                 points += 5
-                players[sid]['streak'] = 0
+                players[sid]['streak'] = 0 # Reset after reward
                 streak_bonus = True
         else:
-            players[sid]['streak'] = 0
+            players[sid]['streak'] = 0 # Reset if wrong or no answer
             
         players[sid]['score'] += points
         
+        # Send Feedback to Player
         emit('feedback', {
             'correct': is_correct,
             'is_fastest': is_fastest,
@@ -152,10 +150,32 @@ def show_results():
             'explanation': q['exp']
         }, to=sid)
 
-    emit('host_reveal', {
+    # D. Send Results to Host
+    # Check if we should show leaderboard (After Q12 or Q25)
+    show_lb = False
+    q_num = current_q_index + 1
+    if q_num == 12 or q_num == 25:
+        show_lb = True
+
+    emit('host_round_end', {
         'correct_text': q['ans_text'],
+        'show_leaderboard': show_lb,
         'leaderboard': sorted_leaderboard()[:6]
     }, broadcast=True)
+
+@socketio.on('submit_answer')
+def handle_answer(data):
+    if request.sid not in players: return
+    time_taken = time.time() - question_start_time
+    
+    # Reject late answers (Server side enforcement)
+    if time_taken > 14: return 
+    
+    val = int(data['value'])
+    answers[request.sid] = {'val': val, 'time': time_taken}
+    
+    player_names = [p['name'] for p in players.values()]
+    emit('update_stats', {'count': len(players), 'answers': len(answers), 'names': player_names}, broadcast=True)
 
 @socketio.on('host_reset_game')
 def reset_game():
