@@ -6,71 +6,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        /* BACKGROUND & DHL THEME */
-        body { 
-            font-family: 'Frutiger', 'Segoe UI', sans-serif; 
-            text-align: center; 
-            padding: 10px; 
-            color: #333;
-            /* Faded AutoStore Background */
-            background: linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            min-height: 100vh;
-        }
-        
-        .logo-container { margin-bottom: 10px; }
-        .logo-img { width: 140px; }
-
-        .box { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin-top: 10px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); 
-            border-bottom: 5px solid #D40511; 
-        }
-        
-        input[type=text] { padding: 12px; font-size: 18px; width: 80%; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 4px; }
-        
-        button { background: #D40511; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 4px; width: 100%; cursor: pointer; font-weight: bold; text-transform: uppercase;}
+        body { font-family: sans-serif; text-align: center; padding: 10px; background: #e0e0e0; color: #333; }
+        .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; }
+        input[type=text] { padding: 10px; font-size: 16px; width: 80%; margin-bottom: 10px; }
+        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; }
         button:disabled { background: #999; }
-        
         .hidden { display: none; }
         
-        /* BINARY SLIDER styling */
-        input[type=range] { width: 100%; height: 35px; accent-color: #D40511; cursor: pointer; margin: 20px 0; }
-        
-        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase;}
-        .lbl-left { color: #27ae60; text-align: left; }
+        input[type=range] { width: 100%; height: 30px; accent-color: #D40511; margin: 20px 0; }
+        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; }
+        .lbl-left { color: #27ae60; }
         .lbl-right { color: #D40511; text-align: right; }
         
-        /* Timer */
-        #timer_bar { height: 10px; background: #FFCC00; width: 100%; transition: width 1s linear; border-radius: 5px;}
-        
-        .big-txt { font-size: 32px; font-weight: bold; color: #D40511; margin: 10px 0; }
-        .bonus-txt { color: #fff; background: #2ecc71; font-weight: bold; font-size: 16px; padding: 5px 10px; border-radius: 15px; display: inline-block; margin: 5px;}
-        .streak-msg { color: #D40511; background: #FFCC00; font-weight: bold; padding: 5px 10px; border-radius: 15px; display: inline-block; margin: 5px; }
-        
-        .correct-answer-display {
-            background: #eee;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-weight: bold;
-        }
+        #timer_bar { height: 10px; background: #FFCC00; width: 100%; }
     </style>
 </head>
 <body>
-    <div class="logo-container">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" class="logo-img">
-    </div>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="150">
 
     <div id="login_screen" class="box">
-        <h2>AUTOMATION GAME</h2>
-        <input type="text" id="username" placeholder="Enter Your Name">
-        <button onclick="joinGame()">Start Game</button>
+        <h3>Join Game</h3>
+        <input type="text" id="username" placeholder="Your Name">
+        <button onclick="joinGame()">Join</button>
+        <p id="status_msg" style="color:red; font-size:12px;"></p>
     </div>
 
     <div id="wait_screen" class="hidden box">
@@ -78,91 +36,78 @@
     </div>
 
     <div id="game_screen" class="hidden box">
-        <div id="timer_container" style="background:#ddd; margin-bottom:15px; border-radius:5px;">
-            <div id="timer_bar"></div>
-        </div>
-        
+        <div style="background:#ddd; height:10px;"><div id="timer_bar"></div></div>
         <h3 id="q_text">Question...</h3>
         
-        <div class="slider-container">
-            <div class="labels">
-                <div class="lbl-left">IDEAL<br>(Automate)</div>
-                <div class="lbl-right">CHALLENGING<br>(Manual)</div>
-            </div>
-            <input type="range" id="slider" min="0" max="100" step="100" value="0">
-            <p id="slider_val_text" style="font-weight:bold; color:#555;">Selected: IDEAL</p>
+        <div class="labels">
+            <div class="lbl-left">IDEAL</div>
+            <div class="lbl-right">CHALLENGING</div>
         </div>
-        <br>
-        <button id="submit_btn" onclick="submitAnswer()">SUBMIT ANSWER</button>
+        <input type="range" id="slider" min="0" max="100" step="100" value="0">
+        <p id="slider_val">Selected: IDEAL</p>
+        
+        <button id="submit_btn" onclick="submitAnswer()">SUBMIT</button>
     </div>
 
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
-        
-        <div class="correct-answer-display">
-            Answer: <span id="fb_correct_text"></span>
-        </div>
-
-        <p id="fb_points" class="big-txt"></p>
-        
-        <div id="bonuses">
-            <span id="fb_speed_bonus" class="hidden bonus-txt">⚡ FASTEST (+10)</span>
-            <span id="fb_streak_bonus" class="hidden streak-msg">🔥 STREAK (+5)</span>
-        </div>
-        
-        <p id="fb_exp" style="font-style: italic; color: #555; margin-top: 15px; border-top: 1px solid #ddd; padding-top:10px;"></p>
-        <p>Waiting for next question...</p>
+        <p>Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
+        <h1 id="fb_pts"></h1>
+        <p id="fb_bonus" style="color:#D40511; font-weight:bold;"></p>
+        <p id="fb_exp" style="font-size:14px; color:#666;"></p>
     </div>
 
     <script>
         var socket = io();
-        var currentTimer = null;
+        var currentTimer;
 
-        // Slider Text Update
+        // Visual Slider Feedback
         document.getElementById('slider').oninput = function() {
             var txt = this.value == "0" ? "Selected: IDEAL" : "Selected: CHALLENGING";
-            var label = document.getElementById('slider_val_text');
-            label.innerHTML = txt;
-            label.style.color = this.value == "0" ? "#27ae60" : "#D40511";
-        }
+            document.getElementById('slider_val').innerHTML = txt;
+            document.getElementById('slider_val').style.color = this.value == "0" ? "#27ae60" : "#D40511";
+        };
+
+        socket.on('connect', function() {
+            document.getElementById('status_msg').innerHTML = "Connected to server!";
+            setTimeout(() => { document.getElementById('status_msg').innerHTML = ""; }, 2000);
+        });
 
         function joinGame() {
             var name = document.getElementById('username').value;
-            if(!name) return alert("Please enter a name.");
+            if(!name) return;
             socket.emit('join_game', {name: name});
-            showScreen('wait_screen');
+            document.getElementById('login_screen').classList.add('hidden');
+            document.getElementById('wait_screen').classList.remove('hidden');
         }
 
         socket.on('wait_screen', function(data) {
             document.getElementById('wait_msg').innerHTML = data.msg;
+            showScreen('wait_screen');
         });
 
         socket.on('new_question', function(data) {
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // Reset UI
-            document.getElementById('slider').value = 0; // Default to Left
-            document.getElementById('slider_val_text').innerHTML = "Selected: IDEAL";
-            document.getElementById('slider_val_text').style.color = "#27ae60";
-            
-            var btn = document.getElementById('submit_btn');
-            btn.disabled = false;
-            btn.innerHTML = "SUBMIT ANSWER";
-            
+            // Reset
+            document.getElementById('slider').value = 0;
+            document.getElementById('slider_val').innerHTML = "Selected: IDEAL";
+            document.getElementById('submit_btn').disabled = false;
+            document.getElementById('submit_btn').innerHTML = "SUBMIT";
+
             // Timer
             var timeLeft = data.duration;
             var bar = document.getElementById('timer_bar');
             bar.style.width = "100%";
-            
             if(currentTimer) clearInterval(currentTimer);
             currentTimer = setInterval(function() {
                 timeLeft--;
-                bar.style.width = (timeLeft / data.duration * 100) + "%";
+                bar.style.width = (timeLeft/data.duration * 100) + "%";
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
-                    btn.disabled = true;
-                    btn.innerHTML = "TIME UP (Wait for Reveal)";
+                    document.getElementById('submit_btn').disabled = true;
+                    document.getElementById('submit_btn').innerHTML = "TIME UP";
                 }
             }, 1000);
         });
@@ -170,21 +115,38 @@
         function submitAnswer() {
             var val = document.getElementById('slider').value;
             socket.emit('submit_answer', {value: val});
-            var btn = document.getElementById('submit_btn');
-            btn.disabled = true;
-            btn.innerHTML = "ANSWER SENT";
+            document.getElementById('submit_btn').disabled = true;
+            document.getElementById('submit_btn').innerHTML = "SENT";
         }
 
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
-
+            document.getElementById('fb_ans').innerHTML = data.correct_text;
+            document.getElementById('fb_pts').innerHTML = "+" + data.points;
+            
             var title = document.getElementById('fb_title');
-            var points = document.getElementById('fb_points');
-            var speedBonus = document.getElementById('fb_speed_bonus');
-            var streakBonus = document.getElementById('fb_streak_bonus');
+            if(data.correct) {
+                title.innerHTML = "✅ CORRECT";
+                title.style.color = "green";
+                try { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] }); } catch(e){}
+            } else {
+                title.innerHTML = "❌ WRONG";
+                title.style.color = "red";
+            }
+            
+            var bonusMsg = "";
+            if(data.is_fastest) bonusMsg += "⚡ FASTEST! ";
+            if(data.streak_bonus) bonusMsg += "🔥 STREAK BONUS! ";
+            document.getElementById('fb_bonus').innerHTML = bonusMsg;
+            document.getElementById('fb_exp').innerHTML = data.explanation;
+        });
 
-            // Reset Bonus Visibility
-            speedBonus.classList.add('hidden');
-            streakBonus.classList.add('hidden');
-
-            document.getElementById('fb_correct_text').innerHTML = data.correct_
+        function showScreen(id) {
+            ['login_screen','wait_screen','game_screen','feedback_screen'].forEach(s => {
+                document.getElementById(s).classList.add('hidden');
+            });
+            document.getElementById(id).classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
