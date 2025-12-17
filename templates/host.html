@@ -20,16 +20,17 @@
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 20px; }
 
+        /* VOTE BAR CSS */
+        .vote-bar-container { display: flex; width: 100%; height: 25px; border-radius: 12px; overflow: hidden; margin-top: 5px; background: #ddd; }
+        .vote-ideal { background: #2ecc71; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
+        .vote-challenging { background: #D40511; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
+
+        /* Modal */
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 9999;}
         .modal-content { background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; text-align: center; border: 5px solid #FFCC00; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 10px; }
         td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 18px; }
-
-        /* VOTE BALANCE BAR */
-        .vote-bar-container { display: flex; width: 100%; height: 25px; border-radius: 12px; overflow: hidden; margin-top: 5px; background: #ddd; }
-        .vote-ideal { background: #2ecc71; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
-        .vote-challenging { background: #D40511; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
     </style>
 </head>
 <body>
@@ -46,7 +47,7 @@
             <div id="p_bar" style="height:100%; width:0%; background:#D40511; color:white; line-height:30px;">0/0</div>
         </div>
 
-        <h4>Audience Vote Split:</h4>
+        <h4>Audience Votes:</h4>
         <div class="vote-bar-container">
             <div id="v_ideal" class="vote-ideal" style="width: 50%;">Ideal: 0</div>
             <div id="v_challenging" class="vote-challenging" style="width: 50%;">Challenging: 0</div>
@@ -88,7 +89,7 @@
                 document.getElementById('p_bar').innerHTML = data.answers + "/" + data.count;
             }
 
-            // UPDATE VOTE BAR
+            // VOTE BAR UPDATE
             if(data.votes) {
                 var total = data.votes.ideal + data.votes.challenging;
                 if(total > 0) {
@@ -98,6 +99,11 @@
                     document.getElementById('v_ideal').innerHTML = data.votes.ideal;
                     document.getElementById('v_challenging').style.width = cPct + "%";
                     document.getElementById('v_challenging').innerHTML = data.votes.challenging;
+                } else {
+                    document.getElementById('v_ideal').style.width = "50%";
+                    document.getElementById('v_ideal').innerHTML = "0";
+                    document.getElementById('v_challenging').style.width = "50%";
+                    document.getElementById('v_challenging').innerHTML = "0";
                 }
             }
         });
@@ -116,7 +122,7 @@
 
         socket.on('new_question', function(data) {
             document.getElementById('q_text_host').innerHTML = "Q" + data.q_id + ": " + data.text;
-            // Reset votes display for new question
+            // Reset votes
             document.getElementById('v_ideal').style.width = "50%";
             document.getElementById('v_ideal').innerHTML = "0";
             document.getElementById('v_challenging').style.width = "50%";
