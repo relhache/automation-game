@@ -8,13 +8,18 @@
     <style>
         body { 
             font-family: 'Segoe UI', sans-serif; text-align: center; padding: 10px; color: #333;
-            background: #eee;
+            background-color: #f4f4f4;
+            background-image: linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px);
+            background-size: 20px 20px;
+            min-height: 100vh;
         }
+        
         .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
-        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+        
+        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: background 0.3s;}
         button:disabled { background: #999; cursor: not-allowed; }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         
         /* SLIDER */
         input[type=range] { 
@@ -32,16 +37,23 @@
         .lbl-left { color: #2ecc71; text-align: left; }
         .lbl-right { color: #D40511; text-align: right; }
         
-        .big-score { font-size: 40px; font-weight: bold; color: #D40511; margin: 10px 0; }
-        .bonus-tag { background: #FFCC00; color: #D40511; padding: 5px 10px; border-radius: 15px; font-weight: bold; display: inline-block; margin: 5px; }
+        #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
+        
+        /* LEADERBOARD OVERLAY */
+        .lb-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.95); z-index:9999; padding-top: 20px;}
+        table { width: 90%; margin: 0 auto; border-collapse: collapse; }
+        th { background: #FFCC00; color: #D40511; padding: 10px; }
+        td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 16px; }
+        .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; animation: pop 0.5s infinite alternate; }
+        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
     </style>
 </head>
 <body>
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="150">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="160">
 
     <div id="login_screen" class="box">
         <h3>Join Game</h3>
-        <input type="text" id="username" placeholder="Name">
+        <input type="text" id="username" placeholder="Enter Name">
         <button onclick="joinGame()">Join</button>
     </div>
 
@@ -50,7 +62,9 @@
     </div>
 
     <div id="game_screen" class="hidden box">
-        <h3 id="q_text">Loading...</h3>
+        <div style="background:#ddd; height:10px; border-radius:5px; margin-bottom:15px;"><div id="timer_bar"></div></div>
+        <h3 id="q_text" style="min-height: 50px;">Loading...</h3>
+        
         <div class="labels">
             <div class="lbl-left">IDEAL</div>
             <div class="lbl-right">CHALLENGING</div>
@@ -65,16 +79,25 @@
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
         <p>Correct: <span id="fb_ans" style="font-weight:bold;"></span></p>
-        <div class="big-score" id="fb_pts"></div>
+        <h2 id="fb_pts" style="color:#D40511; font-size:40px;"></h2>
         <div id="fb_bonuses"></div>
         <p id="fb_exp" style="color:#666; font-style:italic; margin-top:15px; border-top:1px solid #eee; padding-top:10px;"></p>
         <p style="font-size:12px; margin-top:20px;">Waiting for next...</p>
     </div>
 
+    <div id="lb_overlay" class="lb-overlay hidden">
+        <div id="winner_section" class="hidden">
+            <h1>🎉 WINNER! 🎉</h1>
+            <div id="winner_name" class="winner-txt"></div>
+        </div>
+        <h2>🏆 LEADERBOARD</h2>
+        <table id="lb_table"></table>
+        <p style="margin-top:20px; color:#666;">Waiting for Host to continue...</p>
+    </div>
+
     <script>
         var socket = io();
-
-        // SLIDER LOGIC
+        var currentTimer;
         var slider = document.getElementById('slider');
         var sliderTxt = document.getElementById('slider_val');
         
@@ -96,7 +119,7 @@
 
         function joinGame() {
             var name = document.getElementById('username').value;
-            if(!name) return alert("Name required");
+            if(!name) return alert("Enter Name");
             socket.emit('join_game', {name: name});
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.remove('hidden');
@@ -108,10 +131,13 @@
         });
 
         socket.on('new_question', function(data) {
+            // Hide leaderboard if open
+            document.getElementById('lb_overlay').classList.add('hidden');
+            
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // RESET SLIDER
+            // RESET
             slider.value = 50;
             slider.classList.remove('slider-green', 'slider-red');
             sliderTxt.innerHTML = "Slide Left or Right";
@@ -121,17 +147,32 @@
             btn.disabled = false;
             btn.innerHTML = "SUBMIT ANSWER";
             btn.style.background = "#D40511";
+
+            // TIMER
+            var timeLeft = data.duration;
+            var bar = document.getElementById('timer_bar');
+            bar.style.width = "100%";
+            if(currentTimer) clearInterval(currentTimer);
+            currentTimer = setInterval(function() {
+                timeLeft--;
+                bar.style.width = (timeLeft/data.duration * 100) + "%";
+                if(timeLeft <= 0) {
+                    clearInterval(currentTimer);
+                    btn.disabled = true;
+                    btn.innerHTML = "TIME UP";
+                    btn.style.background = "#999";
+                }
+            }, 1000);
         });
 
         function submitAnswer() {
             var val = document.getElementById('slider').value;
-            if(val == "50") return alert("Move slider first!");
-            
+            if(val == "50") return alert("Please select IDEAL or CHALLENGING.");
             socket.emit('submit_answer', {value: val});
             var btn = document.getElementById('submit_btn');
             btn.disabled = true;
             btn.innerHTML = "WAITING FOR REVEAL...";
-            btn.style.background = "#999"; 
+            btn.style.background = "#2ecc71"; 
         }
 
         socket.on('feedback', function(data) {
@@ -150,9 +191,32 @@
             document.getElementById('fb_exp').innerHTML = data.explanation;
             
             var bHtml = "";
-            if(data.is_fastest) bHtml += "<span class='bonus-tag'>⚡ FASTEST</span>";
-            if(data.streak_bonus) bHtml += "<span class='bonus-tag'>🔥 STREAK</span>";
+            if(data.is_fastest) bHtml += "<span style='background:#FFCC00; padding:5px; border-radius:10px; font-weight:bold; margin:5px;'>⚡ FASTEST</span>";
+            if(data.streak_bonus) bHtml += "<span style='background:#FFCC00; padding:5px; border-radius:10px; font-weight:bold; margin:5px;'>🔥 STREAK</span>";
             document.getElementById('fb_bonuses').innerHTML = bHtml;
+        });
+
+        // LEADERBOARD TRIGGERED BY HOST
+        socket.on('show_leaderboard_all', function(data) {
+            var table = document.getElementById('lb_table');
+            table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
+            data.leaderboard.forEach((p, i) => {
+                table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
+            });
+            
+            if(data.is_winner && data.leaderboard.length > 0) {
+                document.getElementById('winner_section').classList.remove('hidden');
+                document.getElementById('winner_name').innerHTML = data.leaderboard[0].name;
+                try { confetti({ particleCount: 500, spread: 100 }); } catch(e){}
+            } else {
+                document.getElementById('winner_section').classList.add('hidden');
+            }
+
+            document.getElementById('lb_overlay').classList.remove('hidden');
+        });
+
+        socket.on('hide_leaderboard_all', function() {
+            document.getElementById('lb_overlay').classList.add('hidden');
         });
 
         function showScreen(id) {
