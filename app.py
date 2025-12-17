@@ -6,39 +6,41 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_automation_secret'
+app.config['SECRET_KEY'] = 'dhl_autostore_secret'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- 25 CUSTOM QUESTIONS ---
+# Target 0 = IDEAL FOR AUTOMATION (Left)
+# Target 100 = CHALLENGING FOR AUTOMATION (Right)
 QUESTIONS = [
     # --- BATCH 1 (Q1-Q12) ---
-    {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "exp": "Good! Uniformity is easy for robots."},
-    {"id": 2, "text": "We sell fragile glass items and loose eggs", "target": 100, "exp": "Challenging. Requires complex, expensive grippers."},
-    {"id": 3, "text": "Annual seasonality is very low (Even throughput)", "target": 0, "exp": "Good! Automation hates idle time."},
-    {"id": 4, "text": "High mix of large, small, and heavy items", "target": 100, "exp": "Challenging. Hard to find one machine for all sizes."},
-    {"id": 5, "text": "Barcodes are uniform and always readable", "target": 0, "exp": "Good! Vision systems need clean data."},
-    {"id": 6, "text": "Sporadic growth (Unpredictable future)", "target": 100, "exp": "Challenging. ROI calculation is risky."},
-    {"id": 7, "text": "Single dispatch type: Parcel only", "target": 0, "exp": "Good! Simple logic for sorting."},
-    {"id": 8, "text": "High Value Added Services (Gift wrap, ironing)", "target": 100, "exp": "Challenging. Humans are better at custom tasks."},
-    {"id": 9, "text": "Low number of SKU types (Low variation)", "target": 0, "exp": "Good! Less complexity."},
-    {"id": 10, "text": "Items arrive without barcodes or security tags", "target": 100, "exp": "Challenging. Needs manual prep before automation."},
-    {"id": 11, "text": "Steady future growth forecast", "target": 0, "exp": "Good! Justifies the CapEx investment."},
-    {"id": 12, "text": "Extreme peaks (Black Friday is 10x normal)", "target": 100, "exp": "Challenging. You overpay for capacity used only 1 week."},
+    {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "ans_text": "IDEAL (Uniform)", "exp": "Good! Uniformity is easy for robots."},
+    {"id": 2, "text": "We sell fragile glass items and loose eggs", "target": 100, "ans_text": "CHALLENGING (Fragile)", "exp": "Challenging. Requires complex, expensive grippers."},
+    {"id": 3, "text": "Annual seasonality is very low (Even throughput)", "target": 0, "ans_text": "IDEAL (Steady)", "exp": "Good! Automation hates idle time."},
+    {"id": 4, "text": "High mix of large, small, and heavy items", "target": 100, "ans_text": "CHALLENGING (High Mix)", "exp": "Challenging. Hard to find one machine for all sizes."},
+    {"id": 5, "text": "Barcodes are uniform and always readable", "target": 0, "ans_text": "IDEAL (Clean Data)", "exp": "Good! Vision systems need clean data."},
+    {"id": 6, "text": "Sporadic growth (Unpredictable future)", "target": 100, "ans_text": "CHALLENGING (Unpredictable)", "exp": "Challenging. ROI calculation is risky."},
+    {"id": 7, "text": "Single dispatch type: Parcel only", "target": 0, "ans_text": "IDEAL (Parcel Only)", "exp": "Good! Simple logic for sorting."},
+    {"id": 8, "text": "High Value Added Services (Gift wrap, ironing)", "target": 100, "ans_text": "CHALLENGING (VAS)", "exp": "Challenging. Humans are better at custom tasks."},
+    {"id": 9, "text": "Low number of SKU types (Low variation)", "target": 0, "ans_text": "IDEAL (Low SKU)", "exp": "Good! Less complexity."},
+    {"id": 10, "text": "Items arrive without barcodes or security tags", "target": 100, "ans_text": "CHALLENGING (No Data)", "exp": "Challenging. Needs manual prep before automation."},
+    {"id": 11, "text": "Steady future growth forecast", "target": 0, "ans_text": "IDEAL (Steady Growth)", "exp": "Good! Justifies the CapEx investment."},
+    {"id": 12, "text": "Extreme peaks (Black Friday is 10x normal)", "target": 100, "ans_text": "CHALLENGING (Peaks)", "exp": "Challenging. You overpay for capacity used only 1 week."},
     
     # --- BATCH 2 (Q13-Q25) ---
-    {"id": 13, "text": "Uniform packing standards (Same box sizes)", "target": 0, "exp": "Good! Predictable stacking."},
-    {"id": 14, "text": "Multiple dispatch avenues (Parcel + Pallet + Click&Collect)", "target": 100, "exp": "Challenging. Requires mixed workflows."},
-    {"id": 15, "text": "Low product weight", "target": 0, "exp": "Good! Faster, cheaper robots."},
-    {"id": 16, "text": "Heavy products (>25kg)", "target": 100, "exp": "Challenging. Safety risks and slow machinery."},
-    {"id": 17, "text": "Low packing media types (Only 1-2 box types)", "target": 0, "exp": "Good! Simplified inventory."},
-    {"id": 18, "text": "Ununiformed product barcoding (Stickers in random places)", "target": 100, "exp": "Challenging. Scanners miss them."},
-    {"id": 19, "text": "Multiple order dispatch from different pick areas", "target": 0, "exp": "Good! Conveyors can merge these easily."},
-    {"id": 20, "text": "Consolidated order to customer from all pick areas", "target": 100, "exp": "Challenging. Complex synchronization needed."},
-    {"id": 21, "text": "Low product cube (Small items)", "target": 0, "exp": "Good! High density storage possible."},
-    {"id": 22, "text": "Multiple packing sizes needed", "target": 100, "exp": "Challenging. Machine changeover takes time."},
-    {"id": 23, "text": "Low or no Product VAS requirement", "target": 0, "exp": "Good! Pick -> Pack -> Ship."},
-    {"id": 24, "text": "Fashion + Food + General Merch (High Mix)", "target": 100, "exp": "Challenging. Cross-contamination and temp control issues."},
-    {"id": 25, "text": "High Volume, Low Variation (The Dream)", "target": 0, "exp": "Good! The perfect scenario for automation."}
+    {"id": 13, "text": "Uniform packing standards (Same box sizes)", "target": 0, "ans_text": "IDEAL (Standard Pack)", "exp": "Good! Predictable stacking."},
+    {"id": 14, "text": "Multiple dispatch avenues (Parcel + Pallet + Click&Collect)", "target": 100, "ans_text": "CHALLENGING (Mixed Channel)", "exp": "Challenging. Requires mixed workflows."},
+    {"id": 15, "text": "Low product weight", "target": 0, "ans_text": "IDEAL (Lightweight)", "exp": "Good! Faster, cheaper robots."},
+    {"id": 16, "text": "Heavy products (>25kg)", "target": 100, "ans_text": "CHALLENGING (Heavy)", "exp": "Challenging. Safety risks and slow machinery."},
+    {"id": 17, "text": "Low packing media types (Only 1-2 box types)", "target": 0, "ans_text": "IDEAL (Few Boxes)", "exp": "Good! Simplified inventory."},
+    {"id": 18, "text": "Ununiformed product barcoding (Stickers in random places)", "target": 100, "ans_text": "CHALLENGING (Bad Labels)", "exp": "Challenging. Scanners miss them."},
+    {"id": 19, "text": "Multiple order dispatch from different pick areas", "target": 0, "ans_text": "IDEAL (Pick Areas)", "exp": "Good! Conveyors can merge these easily."},
+    {"id": 20, "text": "Consolidated order to customer from all pick areas", "target": 100, "ans_text": "CHALLENGING (Consolidation)", "exp": "Challenging. Complex synchronization needed."},
+    {"id": 21, "text": "Low product cube (Small items)", "target": 0, "ans_text": "IDEAL (Small Cube)", "exp": "Good! High density storage possible."},
+    {"id": 22, "text": "Multiple packing sizes needed", "target": 100, "ans_text": "CHALLENGING (Multi Pack)", "exp": "Challenging. Machine changeover takes time."},
+    {"id": 23, "text": "Low or no Product VAS requirement", "target": 0, "ans_text": "IDEAL (No VAS)", "exp": "Good! Pick -> Pack -> Ship."},
+    {"id": 24, "text": "Fashion + Food + General Merch (High Mix)", "target": 100, "ans_text": "CHALLENGING (Contamination)", "exp": "Challenging. Cross-contamination and temp control issues."},
+    {"id": 25, "text": "High Volume, Low Variation (The Dream)", "target": 0, "ans_text": "IDEAL (The Dream)", "exp": "Good! The perfect scenario for automation."}
 ]
 
 # --- GLOBAL GAME STATE ---
@@ -62,7 +64,9 @@ def handle_join(data):
     name = data.get('name', 'Anonymous')
     players[request.sid] = {'name': name, 'score': 0, 'streak': 0}
     emit('wait_screen', {'msg': f"Welcome {name}! Waiting for host..."}, to=request.sid)
-    emit('update_player_stats', {'count': len(players), 'answers': len(answers)}, broadcast=True)
+    # Send full player list to host
+    player_list = [p['name'] for p in players.values()]
+    emit('update_player_stats', {'count': len(players), 'answers': len(answers), 'names': player_list}, broadcast=True)
 
 @socketio.on('host_start_q')
 def start_question(data):
@@ -83,8 +87,8 @@ def start_question(data):
         'duration': 12
     }, broadcast=True)
     
-    # Reset progress bar
-    emit('update_player_stats', {'count': len(players), 'answers': 0}, broadcast=True)
+    player_list = [p['name'] for p in players.values()]
+    emit('update_player_stats', {'count': len(players), 'answers': 0, 'names': player_list}, broadcast=True)
 
 @socketio.on('host_reset_game')
 def reset_game():
@@ -102,13 +106,15 @@ def reset_game():
 def handle_answer(data):
     if request.sid not in players: return
     time_taken = time.time() - question_start_time
-    if time_taken > 13: return 
+    
+    # Allow a small buffer for network latency (14s total)
+    if time_taken > 14: return 
     
     val = int(data['value'])
     answers[request.sid] = {'val': val, 'time': time_taken}
     
-    # Update Host Progress Bar
-    emit('update_player_stats', {'count': len(players), 'answers': len(answers)}, broadcast=True)
+    player_list = [p['name'] for p in players.values()]
+    emit('update_player_stats', {'count': len(players), 'answers': len(answers), 'names': player_list}, broadcast=True)
 
 @socketio.on('host_show_results')
 def show_results():
@@ -117,16 +123,12 @@ def show_results():
     q = QUESTIONS[current_q_index]
     target = q['target']
     
-    # 1. Identify Correct Players
+    # 1. Identify Correct Players (Strict Binary Check)
     correct_players = []
     for sid, ans in answers.items():
         user_val = ans['val']
-        is_correct = False
-        # Logic: 0 is Good (0-45), 100 is Challenging (55-100)
-        if target == 0 and user_val < 45: is_correct = True
-        if target == 100 and user_val > 55: is_correct = True
-        
-        if is_correct:
+        # Slider is binary 0 or 100. Target is 0 or 100. Must match exactly.
+        if user_val == target:
             correct_players.append({'sid': sid, 'time': ans['time']})
     
     # 2. Find Fastest
@@ -138,44 +140,31 @@ def show_results():
     # 3. Assign Points, Streaks & Feedback
     for sid in players.keys():
         points_earned = 0
+        streak_bonus = False
         is_correct = False
         is_fastest = False
         
         if sid in answers:
             user_val = answers[sid]['val']
-            if (target == 0 and user_val < 45) or (target == 100 and user_val > 55):
+            if user_val == target:
                 is_correct = True
                 points_earned = 100
+                
+                # Fastest Bonus
                 if sid == fastest_sid:
                     points_earned += 10
                     is_fastest = True
         
-        # Streak Logic
+        # Streak Logic (Corrected: 3 in a row = +5 and reset)
         if is_correct:
             players[sid]['streak'] += 1
+            if players[sid]['streak'] == 3:
+                points_earned += 5
+                players[sid]['streak'] = 0 # Reset counter
+                streak_bonus = True
         else:
-            players[sid]['streak'] = 0
+            players[sid]['streak'] = 0 # Missed one, reset streak
             
         players[sid]['score'] += points_earned
         
-        emit('feedback', {
-            'correct': is_correct,
-            'is_fastest': is_fastest,
-            'points': points_earned,
-            'streak': players[sid]['streak'],
-            'target': target, # Sent so we can show visual zone
-            'explanation': q['exp']
-        }, to=sid)
-
-    emit('host_stats', {
-        'correct_count': len(correct_players),
-        'total': len(answers),
-        'leaderboard': sorted_leaderboard()[:6] # Top 6
-    }, to=request.sid)
-
-def sorted_leaderboard():
-    lb = [{'name': p['name'], 'score': p['score']} for p in players.values()]
-    return sorted(lb, key=lambda x: x['score'], reverse=True)
-
-if __name__ == '__main__':
-    socketio.run(app, debug=True)
+        emit('feedback
