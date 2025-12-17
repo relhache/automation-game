@@ -1,55 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>DHL Automation Game</title>
+    <title>DHL Game</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        /* AUTOSTORE BACKGROUND (CSS Grid Backup included) */
         body { 
-            font-family: 'Segoe UI', sans-serif; 
-            text-align: center; 
-            padding: 10px; 
-            color: #333;
-            background-color: #f0f0f0;
-            background-image: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), 
-                url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg'),
-                repeating-linear-gradient(0deg, transparent, transparent 19px, #ccc 20px),
-                repeating-linear-gradient(90deg, transparent, transparent 19px, #ccc 20px);
-            background-size: cover, cover, 20px 20px, 20px 20px;
-            background-position: center;
-            background-attachment: fixed;
-            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif; text-align: center; padding: 10px; color: #333;
+            background: #eee;
         }
-        
         .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
-        
-        /* DHL BUTTONS */
         button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
         button:disabled { background: #999; cursor: not-allowed; }
         .hidden { display: none; }
         
-        /* SLIDER STYLING */
+        /* SLIDER */
         input[type=range] { 
-            width: 100%; height: 40px; 
-            -webkit-appearance: none; appearance: none;
-            background: #ccc; /* Default Grey */
-            border-radius: 20px; 
-            outline: none; 
-            margin: 25px 0; 
-            cursor: pointer; 
-            transition: background 0.3s;
+            width: 100%; height: 40px; -webkit-appearance: none; appearance: none;
+            background: #ccc; border-radius: 20px; outline: none; margin: 25px 0; cursor: pointer; 
         }
         input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none; appearance: none;
-            width: 40px; height: 40px;
-            background: white; border: 4px solid #555;
-            border-radius: 50%; cursor: pointer;
+            -webkit-appearance: none; appearance: none; width: 40px; height: 40px;
+            background: white; border: 4px solid #555; border-radius: 50%; cursor: pointer;
         }
-
-        /* Classes to toggle slider color via JS */
         .slider-green { background: #2ecc71 !important; }
         .slider-red { background: #D40511 !important; }
         
@@ -57,18 +32,16 @@
         .lbl-left { color: #2ecc71; text-align: left; }
         .lbl-right { color: #D40511; text-align: right; }
         
-        #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
         .big-score { font-size: 40px; font-weight: bold; color: #D40511; margin: 10px 0; }
         .bonus-tag { background: #FFCC00; color: #D40511; padding: 5px 10px; border-radius: 15px; font-weight: bold; display: inline-block; margin: 5px; }
     </style>
 </head>
 <body>
-    
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="180">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="150">
 
     <div id="login_screen" class="box">
-        <h3>Join Automation Game</h3>
-        <input type="text" id="username" placeholder="Enter Your Name">
+        <h3>Join Game</h3>
+        <input type="text" id="username" placeholder="Name">
         <button onclick="joinGame()">Join</button>
     </div>
 
@@ -77,16 +50,13 @@
     </div>
 
     <div id="game_screen" class="hidden box">
-        <div style="background:#ddd; height:10px; border-radius:5px; margin-bottom:15px;"><div id="timer_bar"></div></div>
-        <h3 id="q_text" style="min-height: 60px;">Loading...</h3>
-        
+        <h3 id="q_text">Loading...</h3>
         <div class="labels">
-            <div class="lbl-left">IDEAL<br>(Automate)</div>
-            <div class="lbl-right">CHALLENGING<br>(Manual)</div>
+            <div class="lbl-left">IDEAL</div>
+            <div class="lbl-right">CHALLENGING</div>
         </div>
         
         <input type="range" id="slider" min="0" max="100" step="50" value="50">
-        
         <p id="slider_val" style="font-weight:bold; color:#555;">Slide Left or Right</p>
         
         <button id="submit_btn" onclick="submitAnswer()">SUBMIT ANSWER</button>
@@ -94,32 +64,29 @@
 
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
-        <p>Correct Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
+        <p>Correct: <span id="fb_ans" style="font-weight:bold;"></span></p>
         <div class="big-score" id="fb_pts"></div>
         <div id="fb_bonuses"></div>
         <p id="fb_exp" style="color:#666; font-style:italic; margin-top:15px; border-top:1px solid #eee; padding-top:10px;"></p>
-        <p style="font-size:12px; margin-top:20px;">Waiting for next question...</p>
+        <p style="font-size:12px; margin-top:20px;">Waiting for next...</p>
     </div>
 
     <script>
         var socket = io();
-        var currentTimer;
 
-        // UI LOGIC: SLIDER COLORS
+        // SLIDER LOGIC
         var slider = document.getElementById('slider');
         var sliderTxt = document.getElementById('slider_val');
         
         slider.oninput = function() {
-            // Remove old colors
             slider.classList.remove('slider-green', 'slider-red');
-            
             if (this.value == "0") {
                 slider.classList.add('slider-green');
-                sliderTxt.innerHTML = "Selection: IDEAL FOR AUTOMATION";
+                sliderTxt.innerHTML = "Selection: IDEAL";
                 sliderTxt.style.color = "#2ecc71";
             } else if (this.value == "100") {
                 slider.classList.add('slider-red');
-                sliderTxt.innerHTML = "Selection: CHALLENGING / MANUAL";
+                sliderTxt.innerHTML = "Selection: CHALLENGING";
                 sliderTxt.style.color = "#D40511";
             } else {
                 sliderTxt.innerHTML = "Slide Left or Right";
@@ -129,7 +96,7 @@
 
         function joinGame() {
             var name = document.getElementById('username').value;
-            if(!name) return alert("Enter Name");
+            if(!name) return alert("Name required");
             socket.emit('join_game', {name: name});
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.remove('hidden');
@@ -144,7 +111,7 @@
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // RESET SLIDER TO MIDDLE (GREY)
+            // RESET SLIDER
             slider.value = 50;
             slider.classList.remove('slider-green', 'slider-red');
             sliderTxt.innerHTML = "Slide Left or Right";
@@ -154,43 +121,21 @@
             btn.disabled = false;
             btn.innerHTML = "SUBMIT ANSWER";
             btn.style.background = "#D40511";
-
-            // TIMER
-            var timeLeft = data.duration;
-            var bar = document.getElementById('timer_bar');
-            bar.style.width = "100%";
-            
-            if(currentTimer) clearInterval(currentTimer);
-            currentTimer = setInterval(function() {
-                timeLeft--;
-                bar.style.width = (timeLeft/data.duration * 100) + "%";
-                if(timeLeft <= 0) {
-                    clearInterval(currentTimer);
-                    btn.disabled = true;
-                    btn.innerHTML = "TIME UP - Calculating...";
-                    btn.style.background = "#999";
-                }
-            }, 1000);
         });
 
         function submitAnswer() {
             var val = document.getElementById('slider').value;
-            // VALIDATION: Must not be 50
-            if(val == "50") {
-                alert("Please move the slider to IDEAL or CHALLENGING first!");
-                return;
-            }
+            if(val == "50") return alert("Move slider first!");
             
             socket.emit('submit_answer', {value: val});
             var btn = document.getElementById('submit_btn');
             btn.disabled = true;
-            btn.innerHTML = "ANSWER SENT";
-            btn.style.background = "#2ecc71"; 
+            btn.innerHTML = "WAITING FOR REVEAL...";
+            btn.style.background = "#999"; 
         }
 
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
-            
             var title = document.getElementById('fb_title');
             if(data.correct) {
                 title.innerHTML = "✅ CORRECT";
@@ -200,15 +145,14 @@
                 title.innerHTML = "❌ WRONG";
                 title.style.color = "#D40511";
             }
-
             document.getElementById('fb_ans').innerHTML = data.correct_text;
             document.getElementById('fb_pts').innerHTML = "+" + data.points;
             document.getElementById('fb_exp').innerHTML = data.explanation;
-
-            var bonusHtml = "";
-            if(data.is_fastest) bonusHtml += "<span class='bonus-tag'>⚡ FASTEST (+10)</span>";
-            if(data.streak_bonus) bonusHtml += "<span class='bonus-tag'>🔥 STREAK (+5)</span>";
-            document.getElementById('fb_bonuses').innerHTML = bonusHtml;
+            
+            var bHtml = "";
+            if(data.is_fastest) bHtml += "<span class='bonus-tag'>⚡ FASTEST</span>";
+            if(data.streak_bonus) bHtml += "<span class='bonus-tag'>🔥 STREAK</span>";
+            document.getElementById('fb_bonuses').innerHTML = bHtml;
         });
 
         function showScreen(id) {
