@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_autostore_v3_fixed'
+app.config['SECRET_KEY'] = 'dhl_manual_mode'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- QUESTIONS ---
@@ -59,7 +59,6 @@ def handle_join(data):
     name = data.get('name', 'Anonymous')
     players[request.sid] = {'name': name, 'score': 0, 'streak': 0}
     emit('wait_screen', {'msg': f"Welcome {name}! Waiting for host..."}, to=request.sid)
-    # Broadcast update to host
     update_host_stats()
 
 @socketio.on('host_start_q')
@@ -75,27 +74,25 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
-    # Send Question (NO ANSWER REVEAL YET)
+    # Send Question immediately
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
-        'duration': 12
+        'duration': 15 # Longer timer for manual mode
     }, broadcast=True)
     
-    # Update Host Bar
     update_host_stats()
 
-    # TIMER: Server waits 13s (12s game + 1s buffer)
-    eventlet.sleep(13) 
-    
-    # CALCULATE & REVEAL
+@socketio.on('host_trigger_reveal')
+def trigger_reveal():
     evaluate_round()
 
 def evaluate_round():
+    if current_q_index < 0: return
     q = QUESTIONS[current_q_index]
     target = q['target']
     
-    # 1. Calculate Results
+    # Calculate
     correct_sids = []
     for sid, ans in answers.items():
         if ans['val'] == target:
@@ -106,7 +103,7 @@ def evaluate_round():
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
-    # 2. Update Scores
+    # Update Scores
     for sid in players:
         points = 0
         streak_bonus = False
@@ -114,7 +111,6 @@ def evaluate_round():
         is_fastest = False
         
         if sid in answers:
-            # Check strictly against target (0 or 100)
             if answers[sid]['val'] == target:
                 is_correct = True
                 points = 100
@@ -143,16 +139,9 @@ def evaluate_round():
             'explanation': q['exp']
         }, to=sid)
 
-    # 3. Determine Leaderboard Trigger (Q12 & Q25)
-    show_lb = False
-    q_num = current_q_index + 1
-    if q_num == 12 or q_num == 25:
-        show_lb = True
-
-    # 4. Send Reveal to Host (Includes Correct Answer & Leaderboard Data)
+    # Send Results to Host
     emit('host_round_end', {
         'correct_text': q['ans_text'],
-        'show_leaderboard': show_lb,
         'leaderboard': sorted_leaderboard()[:6]
     }, broadcast=True)
 
@@ -160,7 +149,7 @@ def evaluate_round():
 def handle_answer(data):
     if request.sid not in players: return
     time_taken = time.time() - question_start_time
-    if time_taken > 14: return # Late
+    # No strict time limit in manual mode, host decides
     
     val = int(data['value'])
     answers[request.sid] = {'val': val, 'time': time_taken}
