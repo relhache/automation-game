@@ -6,40 +6,69 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
+        /* AUTOSTORE BACKGROUND (CSS Grid Backup included) */
         body { 
-            font-family: 'Frutiger', 'Segoe UI', sans-serif; 
+            font-family: 'Segoe UI', sans-serif; 
             text-align: center; 
             padding: 10px; 
             color: #333;
-            background: linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
-            background-size: cover;
+            background-color: #f0f0f0;
+            background-image: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), 
+                url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg'),
+                repeating-linear-gradient(0deg, transparent, transparent 19px, #ccc 20px),
+                repeating-linear-gradient(90deg, transparent, transparent 19px, #ccc 20px);
+            background-size: cover, cover, 20px 20px, 20px 20px;
             background-position: center;
             background-attachment: fixed;
             min-height: 100vh;
         }
+        
         .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
-        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        /* DHL BUTTONS */
+        button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
         button:disabled { background: #999; cursor: not-allowed; }
         .hidden { display: none; }
         
-        input[type=range] { width: 100%; height: 40px; accent-color: #D40511; margin: 25px 0; cursor: pointer; }
+        /* SLIDER STYLING */
+        input[type=range] { 
+            width: 100%; height: 40px; 
+            -webkit-appearance: none; appearance: none;
+            background: #ccc; /* Default Grey */
+            border-radius: 20px; 
+            outline: none; 
+            margin: 25px 0; 
+            cursor: pointer; 
+            transition: background 0.3s;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 40px; height: 40px;
+            background: white; border: 4px solid #555;
+            border-radius: 50%; cursor: pointer;
+        }
+
+        /* Classes to toggle slider color via JS */
+        .slider-green { background: #2ecc71 !important; }
+        .slider-red { background: #D40511 !important; }
+        
         .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-transform: uppercase; }
-        .lbl-left { color: #27ae60; text-align: left; }
+        .lbl-left { color: #2ecc71; text-align: left; }
         .lbl-right { color: #D40511; text-align: right; }
         
         #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
-        
         .big-score { font-size: 40px; font-weight: bold; color: #D40511; margin: 10px 0; }
         .bonus-tag { background: #FFCC00; color: #D40511; padding: 5px 10px; border-radius: 15px; font-weight: bold; display: inline-block; margin: 5px; }
     </style>
 </head>
 <body>
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="150">
+    
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="180">
 
     <div id="login_screen" class="box">
-        <h3>Join Game</h3>
-        <input type="text" id="username" placeholder="Your Name">
+        <h3>Join Automation Game</h3>
+        <input type="text" id="username" placeholder="Enter Your Name">
         <button onclick="joinGame()">Join</button>
     </div>
 
@@ -56,15 +85,16 @@
             <div class="lbl-right">CHALLENGING<br>(Manual)</div>
         </div>
         
-        <input type="range" id="slider" min="0" max="100" step="100" value="0">
-        <p id="slider_val" style="font-weight:bold; color:#27ae60;">Selected: IDEAL</p>
+        <input type="range" id="slider" min="0" max="100" step="50" value="50">
+        
+        <p id="slider_val" style="font-weight:bold; color:#555;">Slide Left or Right</p>
         
         <button id="submit_btn" onclick="submitAnswer()">SUBMIT ANSWER</button>
     </div>
 
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
-        <p>Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
+        <p>Correct Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
         <div class="big-score" id="fb_pts"></div>
         <div id="fb_bonuses"></div>
         <p id="fb_exp" style="color:#666; font-style:italic; margin-top:15px; border-top:1px solid #eee; padding-top:10px;"></p>
@@ -75,13 +105,26 @@
         var socket = io();
         var currentTimer;
 
-        // Visual Slider Feedback
-        document.getElementById('slider').oninput = function() {
-            var txt = this.value == "0" ? "Selected: IDEAL" : "Selected: CHALLENGING";
-            var color = this.value == "0" ? "#27ae60" : "#D40511";
-            var el = document.getElementById('slider_val');
-            el.innerHTML = txt;
-            el.style.color = color;
+        // UI LOGIC: SLIDER COLORS
+        var slider = document.getElementById('slider');
+        var sliderTxt = document.getElementById('slider_val');
+        
+        slider.oninput = function() {
+            // Remove old colors
+            slider.classList.remove('slider-green', 'slider-red');
+            
+            if (this.value == "0") {
+                slider.classList.add('slider-green');
+                sliderTxt.innerHTML = "Selection: IDEAL FOR AUTOMATION";
+                sliderTxt.style.color = "#2ecc71";
+            } else if (this.value == "100") {
+                slider.classList.add('slider-red');
+                sliderTxt.innerHTML = "Selection: CHALLENGING / MANUAL";
+                sliderTxt.style.color = "#D40511";
+            } else {
+                sliderTxt.innerHTML = "Slide Left or Right";
+                sliderTxt.style.color = "#555";
+            }
         };
 
         function joinGame() {
@@ -101,17 +144,18 @@
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // Reset UI
-            document.getElementById('slider').value = 0;
-            document.getElementById('slider_val').innerHTML = "Selected: IDEAL";
-            document.getElementById('slider_val').style.color = "#27ae60";
+            // RESET SLIDER TO MIDDLE (GREY)
+            slider.value = 50;
+            slider.classList.remove('slider-green', 'slider-red');
+            sliderTxt.innerHTML = "Slide Left or Right";
+            sliderTxt.style.color = "#555";
             
             var btn = document.getElementById('submit_btn');
             btn.disabled = false;
             btn.innerHTML = "SUBMIT ANSWER";
             btn.style.background = "#D40511";
 
-            // Timer Logic
+            // TIMER
             var timeLeft = data.duration;
             var bar = document.getElementById('timer_bar');
             bar.style.width = "100%";
@@ -123,7 +167,7 @@
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
                     btn.disabled = true;
-                    btn.innerHTML = "TIME UP - Waiting for Results...";
+                    btn.innerHTML = "TIME UP - Calculating...";
                     btn.style.background = "#999";
                 }
             }, 1000);
@@ -131,14 +175,19 @@
 
         function submitAnswer() {
             var val = document.getElementById('slider').value;
+            // VALIDATION: Must not be 50
+            if(val == "50") {
+                alert("Please move the slider to IDEAL or CHALLENGING first!");
+                return;
+            }
+            
             socket.emit('submit_answer', {value: val});
             var btn = document.getElementById('submit_btn');
             btn.disabled = true;
             btn.innerHTML = "ANSWER SENT";
-            btn.style.background = "#2ecc71"; // Turn green to show submitted
+            btn.style.background = "#2ecc71"; 
         }
 
-        // AUTOMATIC REVEAL LISTENER
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
             
@@ -146,7 +195,6 @@
             if(data.correct) {
                 title.innerHTML = "✅ CORRECT";
                 title.style.color = "green";
-                // Confetti Trigger
                 try { confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] }); } catch(e){}
             } else {
                 title.innerHTML = "❌ WRONG";
