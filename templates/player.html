@@ -9,14 +9,17 @@
         body { 
             font-family: 'Segoe UI', sans-serif; text-align: center; padding: 10px; color: #333;
             background-color: #f4f4f4;
-            /* AutoStore CSS Grid Background */
-            background-image: 
-                linear-gradient(#ccc 1px, transparent 1px),
-                linear-gradient(90deg, #ccc 1px, transparent 1px);
+            background-image: linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px);
             background-size: 20px 20px;
             min-height: 100vh;
         }
-        .box { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        .box { 
+            background: white; padding: 20px; border-radius: 8px; margin-top: 20px; 
+            border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            transition: box-shadow 0.5s ease;
+        }
+        
         input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
         
         button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: background 0.3s;}
@@ -32,21 +35,23 @@
             -webkit-appearance: none; appearance: none; width: 40px; height: 40px;
             background: white; border: 4px solid #555; border-radius: 50%; cursor: pointer;
         }
-        .slider-green { background: #2ecc71 !important; }
-        .slider-red { background: #D40511 !important; }
+        .slider-blue { background: #007bff !important; }
         
         .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-transform: uppercase; }
-        .lbl-left { color: #2ecc71; text-align: left; }
-        .lbl-right { color: #D40511; text-align: right; }
+        .lbl-left { color: #007bff; text-align: left; }
+        .lbl-right { color: #007bff; text-align: right; }
         
         #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
         
-        /* POPUP OVERLAY */
+        /* OVERLAYS */
         .lb-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.98); z-index:9999; padding-top: 20px; overflow-y: auto;}
         table { width: 90%; margin: 0 auto; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 10px; }
         td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 16px; }
         .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; }
+        
+        /* Heat Effect Class */
+        .urgent { box-shadow: 0 0 20px red !important; border: 2px solid red !important; }
     </style>
 </head>
 <body>
@@ -103,15 +108,15 @@
         var sliderTxt = document.getElementById('slider_val');
         
         slider.oninput = function() {
-            slider.classList.remove('slider-green', 'slider-red');
+            slider.classList.remove('slider-blue');
             if (this.value == "0") {
-                slider.classList.add('slider-green');
+                slider.classList.add('slider-blue');
                 sliderTxt.innerHTML = "Selection: IDEAL";
-                sliderTxt.style.color = "#2ecc71";
+                sliderTxt.style.color = "#007bff";
             } else if (this.value == "100") {
-                slider.classList.add('slider-red');
+                slider.classList.add('slider-blue');
                 sliderTxt.innerHTML = "Selection: CHALLENGING";
-                sliderTxt.style.color = "#D40511";
+                sliderTxt.style.color = "#007bff";
             } else {
                 sliderTxt.innerHTML = "Slide Left or Right";
                 sliderTxt.style.color = "#555";
@@ -133,11 +138,17 @@
 
         socket.on('new_question', function(data) {
             document.getElementById('lb_overlay').classList.add('hidden');
-            showScreen('game_screen');
+            var gameBox = document.getElementById('game_screen');
+            gameBox.classList.remove('hidden');
+            gameBox.style.boxShadow = "0 4px 15px rgba(0,0,0,0.1)"; // Reset Glow
+            document.getElementById('login_screen').classList.add('hidden');
+            document.getElementById('wait_screen').classList.add('hidden');
+            document.getElementById('feedback_screen').classList.add('hidden');
+
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
             slider.value = 50;
-            slider.classList.remove('slider-green', 'slider-red');
+            slider.classList.remove('slider-blue');
             sliderTxt.innerHTML = "Slide Left or Right";
             sliderTxt.style.color = "#555";
             
@@ -147,12 +158,20 @@
             btn.style.background = "#D40511";
 
             var timeLeft = data.duration;
+            var totalTime = data.duration;
             var bar = document.getElementById('timer_bar');
             bar.style.width = "100%";
+            
             if(currentTimer) clearInterval(currentTimer);
             currentTimer = setInterval(function() {
                 timeLeft--;
-                bar.style.width = (timeLeft/data.duration * 100) + "%";
+                bar.style.width = (timeLeft/totalTime * 100) + "%";
+                
+                // HEAT VISUAL: Add Red Glow when < 5 seconds
+                if(timeLeft < 5) {
+                     gameBox.style.boxShadow = "0 0 25px rgba(212, 5, 17, 0.6)"; // DHL Red Glow
+                }
+
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
                     btn.disabled = true;
@@ -169,7 +188,7 @@
             var btn = document.getElementById('submit_btn');
             btn.disabled = true;
             btn.innerHTML = "WAITING FOR REVEAL...";
-            btn.style.background = "#2ecc71"; 
+            btn.style.background = "#007bff"; 
         }
 
         socket.on('feedback', function(data) {
