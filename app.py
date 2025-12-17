@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_manual_mode'
+app.config['SECRET_KEY'] = 'dhl_final_ultimate'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- QUESTIONS ---
@@ -52,7 +52,7 @@ def index():
 def host():
     return render_template('host.html')
 
-# --- SOCKETS ---
+# --- SOCKET EVENTS ---
 
 @socketio.on('join_game')
 def handle_join(data):
@@ -65,8 +65,8 @@ def handle_join(data):
 def start_question(data):
     global current_q_index, question_start_time, answers
     
+    # Check if game is over
     if current_q_index >= len(QUESTIONS) - 1:
-        emit('game_over', sorted_leaderboard()[:10], broadcast=True)
         return
 
     current_q_index += 1
@@ -74,28 +74,29 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
-    # Send Question immediately
+    # 1. Send Question to Everyone
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
-        'duration': 15 # Longer timer for manual mode
+        'duration': 12
     }, broadcast=True)
     
     update_host_stats()
 
-@socketio.on('host_trigger_reveal')
-def trigger_reveal():
+    # 2. SERVER AUTOMATION: Wait 14s (12s timer + 2s buffer)
+    eventlet.sleep(14) 
+    
+    # 3. AUTO-REVEAL ANSWER
     evaluate_round()
 
 def evaluate_round():
-    if current_q_index < 0: return
     q = QUESTIONS[current_q_index]
-    target = q['target']
+    target = int(q['target'])
     
-    # Calculate
+    # Calculate Correct & Fastest
     correct_sids = []
     for sid, ans in answers.items():
-        if ans['val'] == target:
+        if int(ans['val']) == target:
             correct_sids.append({'sid': sid, 'time': ans['time']})
             
     fastest_sid = None
@@ -103,7 +104,7 @@ def evaluate_round():
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
-    # Update Scores
+    # Update Scores for ALL connected players
     for sid in players:
         points = 0
         streak_bonus = False
@@ -111,7 +112,7 @@ def evaluate_round():
         is_fastest = False
         
         if sid in answers:
-            if answers[sid]['val'] == target:
+            if int(answers[sid]['val']) == target:
                 is_correct = True
                 points = 100
                 if sid == fastest_sid:
@@ -129,7 +130,7 @@ def evaluate_round():
             
         players[sid]['score'] += points
         
-        # Send Feedback to Player
+        # Send Feedback (Points/Correctness) to Player
         emit('feedback', {
             'correct': is_correct,
             'is_fastest': is_fastest,
@@ -139,40 +140,4 @@ def evaluate_round():
             'explanation': q['exp']
         }, to=sid)
 
-    # Send Results to Host
-    emit('host_round_end', {
-        'correct_text': q['ans_text'],
-        'leaderboard': sorted_leaderboard()[:6]
-    }, broadcast=True)
-
-@socketio.on('submit_answer')
-def handle_answer(data):
-    if request.sid not in players: return
-    time_taken = time.time() - question_start_time
-    # No strict time limit in manual mode, host decides
-    
-    val = int(data['value'])
-    answers[request.sid] = {'val': val, 'time': time_taken}
-    update_host_stats()
-
-def update_host_stats():
-    player_names = [p['name'] for p in players.values()]
-    emit('update_stats', {'count': len(players), 'answers': len(answers), 'names': player_names}, broadcast=True)
-
-@socketio.on('host_reset_game')
-def reset_game():
-    global current_q_index, players, answers
-    current_q_index = -1
-    answers = {}
-    for sid in players:
-        players[sid]['score'] = 0
-        players[sid]['streak'] = 0
-        emit('wait_screen', {'msg': "Game Reset! Waiting for start..."}, to=sid)
-    emit('reset_confirm', {}, broadcast=True)
-
-def sorted_leaderboard():
-    lb = [{'name': p['name'], 'score': p['score']} for p in players.values()]
-    return sorted(lb, key=lambda x: x['score'], reverse=True)
-
-if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    # Send Round Info to Host (Just update the view
