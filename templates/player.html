@@ -26,15 +26,18 @@
         button:disabled { background: #999; cursor: not-allowed; }
         .hidden { display: none !important; }
         
-        /* SLIDER */
+        /* SLIDER STYLING */
         input[type=range] { 
             width: 100%; height: 40px; -webkit-appearance: none; appearance: none;
-            background: #ccc; border-radius: 20px; outline: none; margin: 25px 0; cursor: pointer; 
+            background: #ccc; /* Default Grey */
+            border-radius: 20px; outline: none; margin: 25px 0; cursor: pointer; 
         }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none; appearance: none; width: 40px; height: 40px;
             background: white; border: 4px solid #555; border-radius: 50%; cursor: pointer;
         }
+        
+        /* BLUE Class for when user moves it */
         .slider-blue { background: #007bff !important; }
         
         .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-transform: uppercase; }
@@ -43,15 +46,13 @@
         
         #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
         
-        /* OVERLAYS */
+        /* LEADERBOARD OVERLAY */
         .lb-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.98); z-index:9999; padding-top: 20px; overflow-y: auto;}
         table { width: 90%; margin: 0 auto; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 10px; }
         td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 16px; }
-        .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; }
-        
-        /* Heat Effect Class */
-        .urgent { box-shadow: 0 0 20px red !important; border: 2px solid red !important; }
+        .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; animation: pop 0.5s infinite alternate; }
+        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
     </style>
 </head>
 <body>
@@ -108,7 +109,9 @@
         var sliderTxt = document.getElementById('slider_val');
         
         slider.oninput = function() {
+            // Logic: 50=Grey, 0=Blue, 100=Blue
             slider.classList.remove('slider-blue');
+            
             if (this.value == "0") {
                 slider.classList.add('slider-blue');
                 sliderTxt.innerHTML = "Selection: IDEAL";
@@ -140,13 +143,14 @@
             document.getElementById('lb_overlay').classList.add('hidden');
             var gameBox = document.getElementById('game_screen');
             gameBox.classList.remove('hidden');
-            gameBox.style.boxShadow = "0 4px 15px rgba(0,0,0,0.1)"; // Reset Glow
+            gameBox.style.boxShadow = "0 4px 15px rgba(0,0,0,0.1)"; // Reset Heat
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.add('hidden');
             document.getElementById('feedback_screen').classList.add('hidden');
 
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
+            // RESET Slider
             slider.value = 50;
             slider.classList.remove('slider-blue');
             sliderTxt.innerHTML = "Slide Left or Right";
@@ -167,9 +171,9 @@
                 timeLeft--;
                 bar.style.width = (timeLeft/totalTime * 100) + "%";
                 
-                // HEAT VISUAL: Add Red Glow when < 5 seconds
+                // HEAT EFFECT (< 5s)
                 if(timeLeft < 5) {
-                     gameBox.style.boxShadow = "0 0 25px rgba(212, 5, 17, 0.6)"; // DHL Red Glow
+                    gameBox.style.boxShadow = "0 0 25px rgba(212, 5, 17, 0.6)"; 
                 }
 
                 if(timeLeft <= 0) {
@@ -194,6 +198,8 @@
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
             var title = document.getElementById('fb_title');
+            
+            // Feedback Colors (Green/Red) appear HERE
             if(data.correct) {
                 title.innerHTML = "✅ CORRECT";
                 title.style.color = "green";
