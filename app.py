@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_final_simple'
+app.config['SECRET_KEY'] = 'dhl_stable_v7'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- QUESTIONS ---
@@ -29,6 +29,7 @@ QUESTIONS = [
     {"id": 16, "text": "Heavy products (>25kg)", "target": 100, "ans_text": "CHALLENGING (Heavy)", "exp": "Challenging. Safety risks and slow machinery."},
     {"id": 17, "text": "Low packing media types (Only 1-2 box types)", "target": 0, "ans_text": "IDEAL (Few Boxes)", "exp": "Good! Simplified inventory."},
     {"id": 18, "text": "Ununiformed product barcoding (Random stickers)", "target": 100, "ans_text": "CHALLENGING (Bad Labels)", "exp": "Challenging. Scanners miss them."},
+    # Q19: INDEPENDENT ORDER DISPATCH
     {"id": 19, "text": "Multiple INDEPENDENT order dispatch from different pick areas", "target": 0, "ans_text": "IDEAL (Pick Areas)", "exp": "Good! Conveyors can merge these easily."},
     {"id": 20, "text": "Consolidated order to customer from all pick areas", "target": 100, "ans_text": "CHALLENGING (Consolidation)", "exp": "Challenging. Complex synchronization needed."},
     {"id": 21, "text": "Low product cube (Small items)", "target": 0, "ans_text": "IDEAL (Small Cube)", "exp": "Good! High density storage possible."},
@@ -73,6 +74,7 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
+    # 1. Send Question
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
@@ -81,17 +83,17 @@ def start_question(data):
     
     update_host_stats()
 
-    # SERVER AUTOMATION: 12s + 2s buffer
+    # 2. SERVER AUTOMATION: Wait 14s (12s timer + 2s buffer)
     eventlet.sleep(14) 
     
-    # AUTO-REVEAL & SCORING
+    # 3. AUTO-REVEAL
     evaluate_round()
 
 def evaluate_round():
     q = QUESTIONS[current_q_index]
     target = int(q['target'])
     
-    # Correct & Fastest Logic
+    # Calculate Correct & Fastest
     correct_sids = []
     for sid, ans in answers.items():
         if int(ans['val']) == target:
@@ -117,17 +119,20 @@ def evaluate_round():
                     points += 10
                     is_fastest = True
         
+        # --- STRICT STREAK LOGIC ---
         if is_correct:
             players[sid]['streak'] += 1
-            if players[sid]['streak'] == 3:
+            if players[sid]['streak'] == 3: # Exactly 3 in a row
                 points += 5
-                players[sid]['streak'] = 0 
+                players[sid]['streak'] = 0 # RESET immediately
                 streak_bonus = True
         else:
-            players[sid]['streak'] = 0
+            players[sid]['streak'] = 0 # RESET on wrong answer
+        # ---------------------------
             
         players[sid]['score'] += points
         
+        # Send Feedback to Player
         emit('feedback', {
             'correct': is_correct,
             'is_fastest': is_fastest,
@@ -137,32 +142,22 @@ def evaluate_round():
             'explanation': q['exp']
         }, to=sid)
 
-    # Host Update
+    # Auto Leaderboard Trigger (Q12 & Q25)
+    q_num = current_q_index + 1
+    
+    # Send Round End to Host
     emit('host_round_end', {
         'correct_text': q['ans_text']
     }, broadcast=True)
 
-    # Auto Leaderboard at Q12 and Q25
-    q_num = current_q_index + 1
     if q_num == 12 or q_num == 25:
         is_winner = (q_num == 25)
+        # Small delay so they see "Correct/Wrong" first
         eventlet.sleep(3)
         emit('show_leaderboard_all', {
             'leaderboard': sorted_leaderboard()[:6],
             'is_winner': is_winner
         }, broadcast=True)
-
-@socketio.on('host_trigger_leaderboard')
-def trigger_leaderboard():
-    is_winner = (current_q_index >= 24)
-    emit('show_leaderboard_all', {
-        'leaderboard': sorted_leaderboard()[:6],
-        'is_winner': is_winner
-    }, broadcast=True)
-
-@socketio.on('host_hide_leaderboard')
-def hide_leaderboard():
-    emit('hide_leaderboard_all', {}, broadcast=True)
 
 @socketio.on('submit_answer')
 def handle_answer(data):
@@ -175,21 +170,33 @@ def handle_answer(data):
     update_host_stats()
 
 def update_host_stats():
-    player_names = [p['name'] for p in players.values()]
-    
-    # CALCULATE VOTES (Ideal vs Challenging)
-    ideal_count = 0
-    challenging_count = 0
+    # Calculate Vote Balance for the Host Bar
+    ideal = 0
+    challenging = 0
     for a in answers.values():
-        if a['val'] == 0: ideal_count += 1
-        elif a['val'] == 100: challenging_count += 1
+        if a['val'] == 0: ideal += 1
+        elif a['val'] == 100: challenging += 1
+
+    player_names = [p['name'] for p in players.values()]
     
     emit('update_stats', {
         'count': len(players), 
         'answers': len(answers), 
         'names': player_names,
-        'votes': {'ideal': ideal_count, 'challenging': challenging_count}
+        'votes': {'ideal': ideal, 'challenging': challenging}
     }, broadcast=True)
+
+@socketio.on('host_trigger_leaderboard')
+def trigger_leaderboard():
+    is_winner = (current_q_index >= 24)
+    emit('show_leaderboard_all', {
+        'leaderboard': sorted_leaderboard()[:6],
+        'is_winner': is_winner
+    }, broadcast=True)
+
+@socketio.on('host_hide_leaderboard')
+def hide_leaderboard():
+    emit('hide_leaderboard_all', {}, broadcast=True)
 
 @socketio.on('host_reset_game')
 def reset_game():
