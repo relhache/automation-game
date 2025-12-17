@@ -1,57 +1,89 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Automation Game</title>
+    <title>DHL Automation Game</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background: #2c3e50; color: white; }
-        .box { background: white; color: #333; padding: 20px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        input[type=range] { width: 100%; height: 25px; accent-color: #3498db; }
-        input[type=text] { padding: 10px; font-size: 18px; width: 80%; margin-bottom: 10px; }
-        button { background: #e74c3c; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; width: 100%; cursor: pointer; }
-        button:disabled { background: #95a5a6; }
+        /* DHL THEME: Red #D40511, Yellow #FFCC00 */
+        body { font-family: 'Frutiger', 'Segoe UI', sans-serif; text-align: center; padding: 10px; background: #e0e0e0; color: #333; }
+        
+        /* DHL Logo Header */
+        .logo-container { margin-bottom: 10px; }
+        .logo-img { width: 150px; }
+
+        .box { background: white; padding: 25px; border-radius: 5px; margin-top: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-bottom: 5px solid #D40511; }
+        
+        input[type=text] { padding: 12px; font-size: 18px; width: 80%; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 4px; }
+        
+        button { background: #D40511; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 4px; width: 100%; cursor: pointer; font-weight: bold; text-transform: uppercase;}
+        button:disabled { background: #999; }
+        
         .hidden { display: none; }
-        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 12px; margin-bottom: 10px;}
-        #timer_bar { height: 10px; background: #e74c3c; width: 100%; transition: width 1s linear; border-radius: 5px; }
-        .big-txt { font-size: 24px; font-weight: bold; }
-        .bonus-txt { color: #f39c12; font-weight: bold; font-size: 18px; display: block; margin-top: 5px;}
+        
+        /* Slider Styling */
+        input[type=range] { width: 100%; height: 30px; accent-color: #D40511; cursor: pointer; }
+        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; margin-bottom: 5px; text-transform: uppercase;}
+        
+        /* Visual Zone Bar */
+        #zone_bar { height: 10px; width: 100%; background: #eee; margin-top: 5px; border-radius: 3px; position: relative; }
+        .correct-zone { position: absolute; height: 100%; background: #2ecc71; opacity: 0.5; top: 0; }
+        
+        /* Timer */
+        #timer_bar { height: 8px; background: #FFCC00; width: 100%; transition: width 1s linear; }
+        
+        /* Streak Badge */
+        .streak-badge { background: #FFCC00; color: #D40511; padding: 5px 15px; border-radius: 20px; font-weight: bold; display: inline-block; margin-bottom: 10px; font-size: 14px;}
+        
+        .big-txt { font-size: 28px; font-weight: bold; color: #D40511; }
+        .bonus-txt { color: #D40511; font-weight: bold; font-size: 18px; background: #FFCC00; padding: 5px; display: inline-block; margin-top: 5px;}
     </style>
 </head>
 <body>
+    <div class="logo-container">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" class="logo-img">
+    </div>
 
     <div id="login_screen" class="box">
-        <h2>Enter Name</h2>
-        <input type="text" id="username" placeholder="Your Name">
-        <button onclick="joinGame()">Join Game</button>
+        <h2>AUTOMATION GAME</h2>
+        <input type="text" id="username" placeholder="Enter Your Name">
+        <button onclick="joinGame()">Start</button>
     </div>
 
     <div id="wait_screen" class="hidden box">
-        <h3 id="wait_msg">Waiting...</h3>
+        <h3 id="wait_msg">Waiting for Host...</h3>
     </div>
 
     <div id="game_screen" class="hidden box">
-        <div id="timer_container" style="background:#ddd; border-radius:5px; margin-bottom:15px;">
+        <div id="streak_display" class="hidden streak-badge">🔥 Streak: 0</div>
+        
+        <div id="timer_container" style="background:#ddd; margin-bottom:15px;">
             <div id="timer_bar"></div>
         </div>
+        
         <h3 id="q_text">Question...</h3>
         
         <div class="slider-container">
             <div class="labels">
                 <span style="color:green;">GOOD FIT<br>(Automate)</span>
-                <span style="color:red;">CHALLENGING<br>(Manual)</span>
+                <span style="color:#D40511;">CHALLENGING<br>(Manual)</span>
             </div>
             <input type="range" id="slider" min="0" max="100" value="50">
+            
+            <div id="zone_bar">
+                <div id="zone_highlight" class="correct-zone hidden" style="width:0; left:0;"></div>
+            </div>
         </div>
         <br>
-        <button id="submit_btn" onclick="submitAnswer()">Submit Answer</button>
+        <button id="submit_btn" onclick="submitAnswer()">SUBMIT ANSWER</button>
     </div>
 
     <div id="feedback_screen" class="hidden box">
         <h2 id="fb_title"></h2>
         <p id="fb_points" class="big-txt"></p>
-        <span id="fb_bonus" class="bonus-txt"></span>
-        <p id="fb_exp" style="font-style: italic; color: #555; margin-top: 15px;"></p>
+        <span id="fb_bonus" class="hidden bonus-txt"></span>
+        <p id="fb_exp" style="font-style: italic; color: #555; margin-top: 15px; border-top: 1px solid #ddd; padding-top:10px;"></p>
         <p>Waiting for next question...</p>
     </div>
 
@@ -61,7 +93,7 @@
 
         function joinGame() {
             var name = document.getElementById('username').value;
-            if(!name) return alert("Enter a name!");
+            if(!name) return alert("Please enter a name.");
             socket.emit('join_game', {name: name});
             showScreen('wait_screen');
         }
@@ -73,11 +105,16 @@
         socket.on('new_question', function(data) {
             showScreen('game_screen');
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
-            document.getElementById('slider').value = 50;
-            document.getElementById('submit_btn').disabled = false;
-            document.getElementById('submit_btn').innerHTML = "Submit";
             
-            // Timer Animation
+            // Reset UI
+            document.getElementById('slider').value = 50;
+            document.getElementById('zone_highlight').classList.add('hidden'); // Hide cheat zone
+            
+            var btn = document.getElementById('submit_btn');
+            btn.disabled = false;
+            btn.innerHTML = "SUBMIT ANSWER";
+            
+            // Timer
             var timeLeft = data.duration;
             var bar = document.getElementById('timer_bar');
             bar.style.width = "100%";
@@ -88,8 +125,8 @@
                 bar.style.width = (timeLeft / data.duration * 100) + "%";
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
-                    document.getElementById('submit_btn').disabled = true;
-                    document.getElementById('submit_btn').innerHTML = "Time Up!";
+                    btn.disabled = true;
+                    btn.innerHTML = "TIME UP";
                 }
             }, 1000);
         });
@@ -97,31 +134,59 @@
         function submitAnswer() {
             var val = document.getElementById('slider').value;
             socket.emit('submit_answer', {value: val});
-            document.getElementById('submit_btn').disabled = true;
-            document.getElementById('submit_btn').innerHTML = "Sent!";
+            var btn = document.getElementById('submit_btn');
+            btn.disabled = true;
+            btn.innerHTML = "ANSWER SENT";
         }
 
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
+            
+            // 1. Show Visual Zone on Slider (For learning)
+            // If target 0 (Left), highlight 0-45%. If target 100 (Right), highlight 55-100%
+            var zone = document.getElementById('zone_highlight');
+            zone.classList.remove('hidden');
+            if(data.target === 0) {
+                zone.style.left = "0%";
+                zone.style.width = "45%";
+            } else {
+                zone.style.left = "55%";
+                zone.style.width = "45%";
+            }
+
             var title = document.getElementById('fb_title');
             var points = document.getElementById('fb_points');
             var bonus = document.getElementById('fb_bonus');
-            
-            bonus.innerHTML = ""; // Reset bonus text
+            var streak = document.getElementById('streak_display');
+
+            bonus.classList.add('hidden');
 
             if(data.correct) {
-                title.innerHTML = "✅ Correct!";
+                title.innerHTML = "✅ CORRECT";
                 title.style.color = "green";
-                points.innerHTML = "+" + data.points + " Points";
+                points.innerHTML = "+" + data.points;
                 
+                // Fire Confetti!
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] });
+
                 if(data.is_fastest) {
-                    bonus.innerHTML = "⚡ FASTEST ANSWER (+10 Bonus) ⚡";
+                    bonus.innerHTML = "⚡ FASTEST (+10) ⚡";
+                    bonus.classList.remove('hidden');
                 }
             } else {
-                title.innerHTML = "❌ Missed it.";
-                title.style.color = "red";
-                points.innerHTML = "0 Points";
+                title.innerHTML = "❌ MISSED";
+                title.style.color = "#D40511";
+                points.innerHTML = "+0";
             }
+            
+            // Update Streak Badge
+            if(data.streak > 1) {
+                streak.innerHTML = "🔥 Streak: " + data.streak;
+                streak.classList.remove('hidden');
+            } else {
+                streak.classList.add('hidden');
+            }
+
             document.getElementById('fb_exp').innerHTML = data.explanation;
         });
 
