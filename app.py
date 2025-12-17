@@ -1,10 +1,13 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'automation_secret'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- 25 CUSTOM QUESTIONS ---
 # Target 0 = Good Fit/Automate (Left)
