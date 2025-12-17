@@ -1,64 +1,135 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Player View</title>
+    <title>Automation Game</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f6; }
-        .slider-container { margin-top: 50px; }
-        input[type=range] { width: 100%; max-width: 400px; }
-        .labels { display: flex; justify-content: space-between; max-width: 400px; margin: 0 auto; }
-        button { background: #ff4b4b; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; margin-top: 20px; cursor: pointer; }
-        button:disabled { background: #ccc; }
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background: #2c3e50; color: white; }
+        .box { background: white; color: #333; padding: 20px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        input[type=range] { width: 100%; height: 25px; accent-color: #3498db; }
+        input[type=text] { padding: 10px; font-size: 18px; width: 80%; margin-bottom: 10px; }
+        button { background: #e74c3c; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; width: 100%; cursor: pointer; }
+        button:disabled { background: #95a5a6; }
+        .hidden { display: none; }
+        .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 12px; margin-bottom: 10px;}
+        #timer_bar { height: 10px; background: #e74c3c; width: 100%; transition: width 1s linear; border-radius: 5px; }
+        .big-txt { font-size: 24px; font-weight: bold; }
+        .bonus-txt { color: #f39c12; font-weight: bold; font-size: 18px; display: block; margin-top: 5px;}
     </style>
 </head>
 <body>
-    <h2 id="q_text">Waiting for host...</h2>
-    
-    <div class="slider-container">
-        <div class="labels">
-            <span id="left_lbl">Manual</span>
-            <span id="right_lbl">Automate</span>
-        </div>
-        <br>
-        <input type="range" id="slider" min="0" max="100" value="50">
-        <p>Your Value: <span id="val_display">50</span>%</p>
+
+    <div id="login_screen" class="box">
+        <h2>Enter Name</h2>
+        <input type="text" id="username" placeholder="Your Name">
+        <button onclick="joinGame()">Join Game</button>
     </div>
 
-    <button id="btn" onclick="submitAnswer()">Submit Answer</button>
-    <p id="status" style="color: grey;"></p>
+    <div id="wait_screen" class="hidden box">
+        <h3 id="wait_msg">Waiting...</h3>
+    </div>
+
+    <div id="game_screen" class="hidden box">
+        <div id="timer_container" style="background:#ddd; border-radius:5px; margin-bottom:15px;">
+            <div id="timer_bar"></div>
+        </div>
+        <h3 id="q_text">Question...</h3>
+        
+        <div class="slider-container">
+            <div class="labels">
+                <span style="color:green;">GOOD FIT<br>(Automate)</span>
+                <span style="color:red;">CHALLENGING<br>(Manual)</span>
+            </div>
+            <input type="range" id="slider" min="0" max="100" value="50">
+        </div>
+        <br>
+        <button id="submit_btn" onclick="submitAnswer()">Submit Answer</button>
+    </div>
+
+    <div id="feedback_screen" class="hidden box">
+        <h2 id="fb_title"></h2>
+        <p id="fb_points" class="big-txt"></p>
+        <span id="fb_bonus" class="bonus-txt"></span>
+        <p id="fb_exp" style="font-style: italic; color: #555; margin-top: 15px;"></p>
+        <p>Waiting for next question...</p>
+    </div>
 
     <script>
         var socket = io();
-        var hasAnswered = false;
+        var currentTimer = null;
 
-        var slider = document.getElementById("slider");
-        var valDisplay = document.getElementById("val_display");
+        function joinGame() {
+            var name = document.getElementById('username').value;
+            if(!name) return alert("Enter a name!");
+            socket.emit('join_game', {name: name});
+            showScreen('wait_screen');
+        }
 
-        slider.oninput = function() { valDisplay.innerHTML = this.value; }
+        socket.on('wait_screen', function(data) {
+            document.getElementById('wait_msg').innerHTML = data.msg;
+        });
 
         socket.on('new_question', function(data) {
-            document.getElementById("q_text").innerHTML = data.text;
-            document.getElementById("left_lbl").innerHTML = data.left_label;
-            document.getElementById("right_lbl").innerHTML = data.right_label;
+            showScreen('game_screen');
+            document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
+            document.getElementById('slider').value = 50;
+            document.getElementById('submit_btn').disabled = false;
+            document.getElementById('submit_btn').innerHTML = "Submit";
             
-            // Reset for new round
-            slider.value = 50;
-            valDisplay.innerHTML = "50";
-            hasAnswered = false;
-            document.getElementById("btn").disabled = false;
-            document.getElementById("btn").innerHTML = "Submit Answer";
-            document.getElementById("status").innerHTML = "";
+            // Timer Animation
+            var timeLeft = data.duration;
+            var bar = document.getElementById('timer_bar');
+            bar.style.width = "100%";
+            
+            if(currentTimer) clearInterval(currentTimer);
+            currentTimer = setInterval(function() {
+                timeLeft--;
+                bar.style.width = (timeLeft / data.duration * 100) + "%";
+                if(timeLeft <= 0) {
+                    clearInterval(currentTimer);
+                    document.getElementById('submit_btn').disabled = true;
+                    document.getElementById('submit_btn').innerHTML = "Time Up!";
+                }
+            }, 1000);
         });
 
         function submitAnswer() {
-            if(hasAnswered) return;
-            socket.emit('submit_answer', {value: slider.value});
-            hasAnswered = true;
-            document.getElementById("btn").disabled = true;
-            document.getElementById("btn").innerHTML = "Answer Sent!";
-            document.getElementById("status").innerHTML = "Waiting for next question...";
+            var val = document.getElementById('slider').value;
+            socket.emit('submit_answer', {value: val});
+            document.getElementById('submit_btn').disabled = true;
+            document.getElementById('submit_btn').innerHTML = "Sent!";
+        }
+
+        socket.on('feedback', function(data) {
+            showScreen('feedback_screen');
+            var title = document.getElementById('fb_title');
+            var points = document.getElementById('fb_points');
+            var bonus = document.getElementById('fb_bonus');
+            
+            bonus.innerHTML = ""; // Reset bonus text
+
+            if(data.correct) {
+                title.innerHTML = "✅ Correct!";
+                title.style.color = "green";
+                points.innerHTML = "+" + data.points + " Points";
+                
+                if(data.is_fastest) {
+                    bonus.innerHTML = "⚡ FASTEST ANSWER (+10 Bonus) ⚡";
+                }
+            } else {
+                title.innerHTML = "❌ Missed it.";
+                title.style.color = "red";
+                points.innerHTML = "0 Points";
+            }
+            document.getElementById('fb_exp').innerHTML = data.explanation;
+        });
+
+        function showScreen(id) {
+            ['login_screen', 'wait_screen', 'game_screen', 'feedback_screen'].forEach(s => {
+                document.getElementById(s).classList.add('hidden');
+            });
+            document.getElementById(id).classList.remove('hidden');
         }
     </script>
 </body>
