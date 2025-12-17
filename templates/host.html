@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Host Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 40px; text-align: center; }
+        .stats-box { border: 2px solid #333; padding: 20px; display: inline-block; border-radius: 10px; margin: 20px; }
+        .big-number { font-size: 48px; font-weight: bold; color: #ff4b4b; }
+        button { padding: 10px 20px; font-size: 20px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px;}
+    </style>
+</head>
+<body>
+    <h1>Host Dashboard</h1>
+    <h2 id="current_q">Loading Question...</h2>
+
+    <div class="stats-box">
+        <p>Players Answered</p>
+        <div id="count" class="big-number">0</div>
+    </div>
+
+    <div class="stats-box">
+        <p>Average Score</p>
+        <div id="avg" class="big-number">0%</div>
+    </div>
+    
+    <br><br>
+    <button onclick="nextQ()">Next Question >></button>
+
+    <script>
+        var socket = io();
+
+        socket.on('new_question', function(data) {
+            document.getElementById("current_q").innerHTML = "Current: " + data.text;
+        });
+
+        socket.on('update_stats', function(data) {
+            document.getElementById("count").innerHTML = data.count;
+            document.getElementById("avg").innerHTML = Math.round(data.average) + "%";
+        });
+
+        socket.on('reset_stats', function() {
+            document.getElementById("count").innerHTML = "0";
+            document.getElementById("avg").innerHTML = "0%";
+        });
+
+        function nextQ() {
+            socket.emit('next_question');
+        }
+    </script>
+</body>
+</html>
