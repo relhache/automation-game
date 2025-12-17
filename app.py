@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_final_ultimate'
+app.config['SECRET_KEY'] = 'dhl_autostore_final'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # --- QUESTIONS ---
@@ -40,8 +40,8 @@ QUESTIONS = [
 
 # --- STATE ---
 current_q_index = -1 
-players = {} 
-answers = {} 
+players = {} # Key: SID, Value: {name, score, streak}
+answers = {} # Key: SID, Value: {val, time}
 question_start_time = 0
 
 @app.route('/')
@@ -65,7 +65,6 @@ def handle_join(data):
 def start_question(data):
     global current_q_index, question_start_time, answers
     
-    # Check if game is over
     if current_q_index >= len(QUESTIONS) - 1:
         return
 
@@ -74,7 +73,8 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
-    # 1. Send Question to Everyone
+    # 1. Send Question to Everyone (Players + Host)
+    # Host gets 'host_ans' but logic in HTML hides it until end
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
@@ -86,7 +86,7 @@ def start_question(data):
     # 2. SERVER AUTOMATION: Wait 14s (12s timer + 2s buffer)
     eventlet.sleep(14) 
     
-    # 3. AUTO-REVEAL ANSWER
+    # 3. AUTO-REVEAL & SCORING
     evaluate_round()
 
 def evaluate_round():
@@ -101,6 +101,7 @@ def evaluate_round():
             
     fastest_sid = None
     if correct_sids:
+        # Sort by time (ascending)
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
@@ -123,14 +124,14 @@ def evaluate_round():
             players[sid]['streak'] += 1
             if players[sid]['streak'] >= 3:
                 points += 5
-                players[sid]['streak'] = 0 
+                players[sid]['streak'] = 0 # Reset streak after bonus
                 streak_bonus = True
         else:
-            players[sid]['streak'] = 0
+            players[sid]['streak'] = 0 # Missed -> Reset streak
             
         players[sid]['score'] += points
         
-        # Send Feedback (Points/Correctness) to Player
+        # Send Individual Feedback to Player
         emit('feedback', {
             'correct': is_correct,
             'is_fastest': is_fastest,
@@ -140,4 +141,65 @@ def evaluate_round():
             'explanation': q['exp']
         }, to=sid)
 
-    # Send Round Info to Host (Just update the view
+    # 4. Check for AUTOMATIC LEADERBOARD (Q12 & Q25)
+    q_num = current_q_index + 1
+    
+    # Send "Round End" to update Host Screen with Answer
+    emit('host_round_end', {
+        'correct_text': q['ans_text']
+    }, broadcast=True)
+
+    # If Q12 or Q25, FORCE Leaderboard on EVERYONE
+    if q_num == 12 or q_num == 25:
+        is_winner = (q_num == 25)
+        # Wait 3 seconds so people can see their individual result first, then pop leaderboard
+        eventlet.sleep(3)
+        emit('show_leaderboard_all', {
+            'leaderboard': sorted_leaderboard()[:6],
+            'is_winner': is_winner
+        }, broadcast=True)
+
+# --- MANUAL LEADERBOARD BUTTON (Optional Use) ---
+@socketio.on('host_trigger_leaderboard')
+def trigger_leaderboard():
+    is_winner = (current_q_index >= 24)
+    emit('show_leaderboard_all', {
+        'leaderboard': sorted_leaderboard()[:6],
+        'is_winner': is_winner
+    }, broadcast=True)
+
+@socketio.on('host_hide_leaderboard')
+def hide_leaderboard():
+    emit('hide_leaderboard_all', {}, broadcast=True)
+
+@socketio.on('submit_answer')
+def handle_answer(data):
+    if request.sid not in players: return
+    time_taken = time.time() - question_start_time
+    if time_taken > 15: return 
+    
+    val = int(data['value'])
+    answers[request.sid] = {'val': val, 'time': time_taken}
+    update_host_stats()
+
+def update_host_stats():
+    player_names = [p['name'] for p in players.values()]
+    emit('update_stats', {'count': len(players), 'answers': len(answers), 'names': player_names}, broadcast=True)
+
+@socketio.on('host_reset_game')
+def reset_game():
+    global current_q_index, players, answers
+    current_q_index = -1
+    answers = {}
+    for sid in players:
+        players[sid]['score'] = 0
+        players[sid]['streak'] = 0
+        emit('wait_screen', {'msg': "Game Reset! Waiting for start..."}, to=sid)
+    emit('reset_confirm', {}, broadcast=True)
+
+def sorted_leaderboard():
+    lb = [{'name': p['name'], 'score': p['score']} for p in players.values()]
+    return sorted(lb, key=lambda x: x['score'], reverse=True)
+
+if __name__ == '__main__':
+    socketio.run(app, debug=True)
