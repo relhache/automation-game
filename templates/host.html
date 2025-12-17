@@ -4,40 +4,30 @@
     <title>DHL HOST</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            padding: 20px; 
-            text-align: center; 
-            background-color: #f0f0f0;
-            background-image: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), 
-                url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
-            background-size: cover;
-        }
-        .card { background: white; padding: 25px; margin: 20px auto; max-width: 800px; border-top: 5px solid #D40511; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; text-align: center; background: #eee; }
+        .card { background: white; padding: 25px; margin: 20px auto; max-width: 800px; border-top: 5px solid #D40511; border-radius: 8px; }
         
-        button { padding: 15px 40px; font-size: 20px; margin: 15px; cursor: pointer; border: none; color: white; border-radius: 5px; font-weight: bold; }
+        button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border: none; color: white; border-radius: 5px; font-weight: bold; }
         .btn-green { background: #2ecc71; }
+        .btn-red { background: #D40511; }
+        .btn-blue { background: #3498db; }
         .btn-grey { background: #555; font-size: 14px; padding: 10px 20px; }
         
         .hidden { display: none; }
         
-        /* Question Display */
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 20px; }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th { background: #FFCC00; color: #D40511; padding: 12px; }
-        td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 18px; }
         
-        .progress-bar { width: 0%; height: 30px; background: #D40511; text-align: center; color: white; line-height: 30px; transition: width 0.3s; }
-        
-        /* Modal for Leaderboard */
-        .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 1000;}
+        /* Modal Style - High Z-Index */
+        .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 9999;}
         .modal-content { background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; text-align: center; border: 5px solid #FFCC00; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #FFCC00; color: #D40511; padding: 10px; }
+        td { border-bottom: 1px solid #ddd; padding: 10px; }
     </style>
 </head>
 <body>
-    
     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="200">
     <h1>HOST CONTROL</h1>
     
@@ -45,26 +35,28 @@
         <h2 id="status">Lobby Open</h2>
         <h3 id="count">0 Players Joined</h3>
         <button class="btn-grey" onclick="toggleNames()">Toggle Names</button>
-        <p id="p_names" class="hidden" style="font-size:12px; color:#666;"></p>
+        <p id="p_names" class="hidden"></p>
         
-        <div style="background:#ddd; border-radius:5px; overflow:hidden; margin: 15px 0;">
-            <div id="p_bar" class="progress-bar">0/0</div>
+        <div style="background:#ddd; border-radius:5px; height:30px; margin:15px 0; overflow:hidden;">
+            <div id="p_bar" style="height:100%; width:0%; background:#D40511; color:white; line-height:30px;">0/0</div>
         </div>
         
         <div id="current_q_box">
-            <div id="q_text_host" style="font-size: 18px;">Waiting to start...</div>
+            <div id="q_text_host">Waiting to start...</div>
             <span id="q_ans_host" class="ans-reveal hidden"></span>
         </div>
 
-        <button id="next_btn" class="btn-green" onclick="startQ()">Start Next Question</button>
+        <button id="start_btn" class="btn-green" onclick="startQ()">1. Start Question</button>
+        <button id="reveal_btn" class="btn-red" onclick="reveal()" disabled>2. Reveal Answer</button>
+        <button id="lb_btn" class="btn-blue" onclick="showLb()">3. Show Leaderboard</button>
         
-        <br>
+        <br><br>
         <button class="btn-grey" onclick="resetGame()">⚠ Reset Game</button>
     </div>
 
     <div id="lb_modal" class="modal hidden">
         <div class="modal-content">
-            <h1>🏆 LEADERBOARD</h1>
+            <h2>🏆 LEADERBOARD</h2>
             <table id="lb_table"></table>
             <br>
             <button class="btn-green" onclick="closeLb()">Close & Continue</button>
@@ -73,67 +65,74 @@
 
     <script>
         var socket = io();
+        var lbData = []; // Store leaderboard data locally
 
         socket.on('update_stats', function(data) {
             document.getElementById('count').innerHTML = data.count + " Players Joined";
             if(data.names) document.getElementById('p_names').innerHTML = data.names.join(", ");
             if(data.count > 0) {
                 var pct = Math.round((data.answers / data.count) * 100);
-                var bar = document.getElementById('p_bar');
-                bar.style.width = pct + "%";
-                bar.innerHTML = data.answers + "/" + data.count;
+                document.getElementById('p_bar').style.width = pct + "%";
+                document.getElementById('p_bar').innerHTML = data.answers + "/" + data.count;
             }
         });
 
         function startQ() {
-            var btn = document.getElementById('next_btn');
-            btn.disabled = true;
-            btn.style.background = "#999";
-            btn.innerHTML = "Question Running...";
+            document.getElementById('start_btn').disabled = true;
+            document.getElementById('start_btn').style.background = "#999";
+            document.getElementById('reveal_btn').disabled = false;
+            document.getElementById('reveal_btn').style.background = "#D40511"; // Enable Red Reveal
             
-            document.getElementById('q_ans_host').classList.add('hidden'); // Hide answer
+            document.getElementById('q_ans_host').classList.add('hidden');
             socket.emit('host_start_q', {});
             document.getElementById('status').innerHTML = "Question In Progress...";
+        }
+        
+        function reveal() {
+            document.getElementById('reveal_btn').disabled = true;
+            document.getElementById('reveal_btn').style.background = "#999";
+            document.getElementById('start_btn').disabled = false;
+            document.getElementById('start_btn').style.background = "#2ecc71";
+            
+            socket.emit('host_trigger_reveal');
         }
 
         socket.on('new_question', function(data) {
             document.getElementById('q_text_host').innerHTML = "Q" + data.q_id + ": " + data.text;
-            // Don't show answer yet
         });
 
-        // AUTOMATIC REVEAL FROM SERVER
         socket.on('host_round_end', function(data) {
             document.getElementById('status').innerHTML = "Round Finished.";
             
-            // Re-enable button
-            var btn = document.getElementById('next_btn');
-            btn.disabled = false;
-            btn.style.background = "#2ecc71";
-            btn.innerHTML = "Start Next Question";
-            
-            // Show Answer to Host NOW
             var ansSpan = document.getElementById('q_ans_host');
             ansSpan.innerHTML = "Correct: " + data.correct_text;
             ansSpan.classList.remove('hidden');
 
-            // Leaderboard Check
-            if(data.show_leaderboard) {
-                var table = document.getElementById('lb_table');
-                table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
-                data.leaderboard.forEach((p, i) => {
-                    table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
-                });
-                document.getElementById('lb_modal').classList.remove('hidden');
-            }
+            // Save data for whenever you want to click the blue button
+            lbData = data.leaderboard;
         });
 
-        function toggleNames() {
-            var el = document.getElementById('p_names');
-            el.classList.toggle('hidden');
+        // Manual Leaderboard Toggle
+        function showLb() {
+            var table = document.getElementById('lb_table');
+            table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
+            if(lbData.length > 0) {
+                lbData.forEach((p, i) => {
+                    table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
+                });
+            } else {
+                table.innerHTML += "<tr><td colspan='3'>No Data Yet</td></tr>";
+            }
+            document.getElementById('lb_modal').classList.remove('hidden');
         }
         
         function closeLb() {
             document.getElementById('lb_modal').classList.add('hidden');
+        }
+
+        function toggleNames() {
+            var el = document.getElementById('p_names');
+            el.classList.toggle('hidden');
         }
 
         function resetGame() {
