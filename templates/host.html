@@ -13,12 +13,13 @@
         .btn-blue { background: #3498db; }
         .btn-grey { background: #555; font-size: 14px; padding: 10px 20px; }
         
-        .hidden { display: none; }
+        /* THE FIX: !important forces it to hide */
+        .hidden { display: none !important; }
         
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 20px; }
         
-        /* Modal Style - High Z-Index */
+        /* Modal Style */
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 9999;}
         .modal-content { background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; text-align: center; border: 5px solid #FFCC00; }
         
@@ -65,7 +66,7 @@
 
     <script>
         var socket = io();
-        var lbData = []; // Store leaderboard data locally
+        var lbData = [];
 
         socket.on('update_stats', function(data) {
             document.getElementById('count').innerHTML = data.count + " Players Joined";
@@ -81,7 +82,7 @@
             document.getElementById('start_btn').disabled = true;
             document.getElementById('start_btn').style.background = "#999";
             document.getElementById('reveal_btn').disabled = false;
-            document.getElementById('reveal_btn').style.background = "#D40511"; // Enable Red Reveal
+            document.getElementById('reveal_btn').style.background = "#D40511"; 
             
             document.getElementById('q_ans_host').classList.add('hidden');
             socket.emit('host_start_q', {});
@@ -108,11 +109,9 @@
             ansSpan.innerHTML = "Correct: " + data.correct_text;
             ansSpan.classList.remove('hidden');
 
-            // Save data for whenever you want to click the blue button
             lbData = data.leaderboard;
         });
 
-        // Manual Leaderboard Toggle
         function showLb() {
             var table = document.getElementById('lb_table');
             table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
