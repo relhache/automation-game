@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Player View</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f2f6; }
+        .slider-container { margin-top: 50px; }
+        input[type=range] { width: 100%; max-width: 400px; }
+        .labels { display: flex; justify-content: space-between; max-width: 400px; margin: 0 auto; }
+        button { background: #ff4b4b; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; margin-top: 20px; cursor: pointer; }
+        button:disabled { background: #ccc; }
+    </style>
+</head>
+<body>
+    <h2 id="q_text">Waiting for host...</h2>
+    
+    <div class="slider-container">
+        <div class="labels">
+            <span id="left_lbl">Manual</span>
+            <span id="right_lbl">Automate</span>
+        </div>
+        <br>
+        <input type="range" id="slider" min="0" max="100" value="50">
+        <p>Your Value: <span id="val_display">50</span>%</p>
+    </div>
+
+    <button id="btn" onclick="submitAnswer()">Submit Answer</button>
+    <p id="status" style="color: grey;"></p>
+
+    <script>
+        var socket = io();
+        var hasAnswered = false;
+
+        var slider = document.getElementById("slider");
+        var valDisplay = document.getElementById("val_display");
+
+        slider.oninput = function() { valDisplay.innerHTML = this.value; }
+
+        socket.on('new_question', function(data) {
+            document.getElementById("q_text").innerHTML = data.text;
+            document.getElementById("left_lbl").innerHTML = data.left_label;
+            document.getElementById("right_lbl").innerHTML = data.right_label;
+            
+            // Reset for new round
+            slider.value = 50;
+            valDisplay.innerHTML = "50";
+            hasAnswered = false;
+            document.getElementById("btn").disabled = false;
+            document.getElementById("btn").innerHTML = "Submit Answer";
+            document.getElementById("status").innerHTML = "";
+        });
+
+        function submitAnswer() {
+            if(hasAnswered) return;
+            socket.emit('submit_answer', {value: slider.value});
+            hasAnswered = true;
+            document.getElementById("btn").disabled = true;
+            document.getElementById("btn").innerHTML = "Answer Sent!";
+            document.getElementById("status").innerHTML = "Waiting for next question...";
+        }
+    </script>
+</body>
+</html>
