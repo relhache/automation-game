@@ -1,144 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>DHL Host Dashboard</title>
+    <title>DHL HOST</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            padding: 20px; 
-            text-align: center; 
-            background: linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Autostore_grid.jpg/1200px-Autostore_grid.jpg');
-            background-size: cover;
-        }
-        
-        .card { background: white; padding: 30px; margin: 20px auto; max-width: 800px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #D40511; }
-        
-        .btn { padding: 15px 40px; font-size: 20px; cursor: pointer; background: #D40511; color: white; border: none; border-radius: 4px; margin: 10px; font-weight: bold; text-transform: uppercase;}
+        body { font-family: sans-serif; padding: 20px; text-align: center; background: #eee; }
+        .card { background: white; padding: 20px; margin: 20px auto; max-width: 600px; border-top: 5px solid #D40511; border-radius: 5px; }
+        button { padding: 15px; font-size: 18px; margin: 10px; cursor: pointer; border: none; color: white; border-radius: 5px; }
         .btn-green { background: #2ecc71; }
-        .btn-grey { background: #555; font-size: 14px; padding: 10px 20px;}
-        
+        .btn-red { background: #D40511; }
         .hidden { display: none; }
-        
-        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
-        th { background: #FFCC00; color: #D40511; padding: 15px; }
-        td { padding: 15px; border-bottom: 1px solid #ddd; font-size: 18px; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        
-        .progress-container { width: 100%; background-color: #ddd; height: 30px; border-radius: 5px; margin: 20px 0; overflow: hidden;}
-        .progress-bar { height: 100%; width: 0%; background-color: #D40511; transition: width 0.5s; text-align: center; color: white; line-height: 30px; font-weight: bold; }
-        
-        #player_list_div { text-align: left; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; margin-top: 10px; max-height: 200px; overflow-y: auto;}
-        .player-tag { display: inline-block; background: #ddd; padding: 5px 10px; margin: 3px; border-radius: 15px; font-size: 12px;}
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #FFCC00; padding: 10px; }
+        td { border-bottom: 1px solid #ddd; padding: 10px; }
     </style>
 </head>
 <body>
-    
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="200">
     <h1>HOST CONTROL</h1>
-    
     <div class="card">
         <h2 id="status">Lobby Open</h2>
-        <h3 id="player_count">0 Players Joined</h3>
+        <h3 id="count">0 Players</h3>
+        <p id="p_names" style="font-size:12px; color:#666;"></p>
+        <div style="background:#ddd; height:20px; margin:10px 0;"><div id="p_bar" style="height:100%; width:0%; background:#D40511;"></div></div>
         
-        <button class="btn-grey" onclick="togglePlayers()">Show/Hide Player Names</button>
-        <div id="player_list_div" class="hidden"></div>
-        
-        <div class="progress-container">
-            <div id="p_bar" class="progress-bar">0%</div>
-        </div>
-
-        <button class="btn btn-green" onclick="startQ()">Start Next Question</button>
-        <button class="btn" onclick="reveal()">Reveal Results</button>
-        <br><br>
-        <button class="btn btn-grey" onclick="resetGame()">⚠ Reset Game</button>
+        <button class="btn-green" onclick="startQ()">Start Next</button>
+        <button class="btn-red" onclick="reveal()">Reveal</button>
+        <br>
+        <button style="background:#555; font-size:12px;" onclick="resetGame()">Reset Game</button>
     </div>
 
-    <div id="leaderboard_card" class="card hidden">
-        <h2 id="answer_reveal_host" style="color:#27ae60;"></h2>
-        <h2>🏆 TOP 6 LEADERBOARD</h2>
-        <table id="lb_table">
-            <tr><th>Rank</th><th>Name</th><th>Score</th></tr>
-        </table>
+    <div id="lb_card" class="card hidden">
+        <h2 id="ans_reveal" style="color:green;"></h2>
+        <h3>Leaderboard</h3>
+        <table id="lb_table"></table>
     </div>
 
     <script>
         var socket = io();
         var qNum = 0;
 
-        socket.on('update_player_stats', function(data) {
-            document.getElementById('player_count').innerHTML = data.count + " Players Joined";
-            
-            // Update Player List
-            var listDiv = document.getElementById('player_list_div');
-            listDiv.innerHTML = "";
-            if(data.names) {
-                data.names.forEach(n => {
-                    listDiv.innerHTML += `<span class="player-tag">${n}</span>`;
-                });
-            }
-
-            // Update Progress Bar
+        socket.on('update_stats', function(data) {
+            document.getElementById('count').innerHTML = data.count + " Players";
+            if(data.names) document.getElementById('p_names').innerHTML = data.names.join(", ");
             if(data.count > 0) {
-                var pct = Math.round((data.answers / data.count) * 100);
-                var bar = document.getElementById('p_bar');
-                bar.style.width = pct + "%";
-                bar.innerHTML = data.answers + "/" + data.count + " Answered";
+                var pct = (data.answers / data.count) * 100;
+                document.getElementById('p_bar').style.width = pct + "%";
             }
         });
-
-        function togglePlayers() {
-            var d = document.getElementById('player_list_div');
-            if(d.classList.contains('hidden')) d.classList.remove('hidden');
-            else d.classList.add('hidden');
-        }
 
         function startQ() {
-            if (qNum == 12 || qNum == 25) {
-                alert("LEADERBOARD BREAK!");
-            }
             socket.emit('host_start_q', {});
-            document.getElementById('status').innerHTML = "Question " + (qNum + 1) + " Running...";
-            document.getElementById('leaderboard_card').classList.add('hidden');
+            document.getElementById('status').innerHTML = "Question Running...";
+            document.getElementById('lb_card').classList.add('hidden');
         }
-
-        function resetGame() {
-            if(confirm("⚠ RESET GAME: Confirm?")) {
-                socket.emit('host_reset_game');
-            }
-        }
-
-        socket.on('new_question', function(data) {
-            qNum = data.q_id;
-        });
-
-        socket.on('reset_confirm', function() {
-            qNum = 0;
-            document.getElementById('status').innerHTML = "Game Reset.";
-            document.getElementById('leaderboard_card').classList.add('hidden');
-            document.getElementById('p_bar').style.width = "0%";
-        });
 
         function reveal() {
             socket.emit('host_show_results');
         }
 
-        socket.on('host_stats', function(data) {
-            document.getElementById('status').innerHTML = "Result: " + data.correct_count + "/" + data.total + " Correct";
-            
-            // Show Correct Answer on Host Screen
-            document.getElementById('answer_reveal_host').innerHTML = "Correct Answer: " + data.correct_text;
+        function resetGame() {
+            if(confirm("Reset everything?")) socket.emit('host_reset_game');
+        }
 
-            var table = document.getElementById('lb_table');
-            while(table.rows.length > 1) { table.deleteRow(1); }
+        socket.on('host_reveal', function(data) {
+            document.getElementById('status').innerHTML = "Results Shown";
+            document.getElementById('ans_reveal').innerHTML = "Correct: " + data.correct_text;
             
-            data.leaderboard.forEach((p, index) => {
-                var row = table.insertRow();
-                row.insertCell(0).innerHTML = index + 1;
-                row.insertCell(1).innerHTML = p.name;
-                row.insertCell(2).innerHTML = p.score;
+            var table = document.getElementById('lb_table');
+            table.innerHTML = "<tr><th>Rank</th><th>Name</th><th>Score</th></tr>";
+            data.leaderboard.forEach((p, i) => {
+                table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
             });
-            document.getElementById('leaderboard_card').classList.remove('hidden');
+            document.getElementById('lb_card').classList.remove('hidden');
+        });
+        
+        socket.on('new_question', function(data) { qNum = data.q_id; });
+        socket.on('reset_confirm', function() { 
+            document.getElementById('status').innerHTML = "Game Reset"; 
+            document.getElementById('p_bar').style.width = "0%";
         });
     </script>
 </body>
