@@ -208,17 +208,17 @@ def evaluate_round(round_id: int):
                 options = [
                     f"Well done {p_name}.",
                     f"Strong call, {p_name}.",
-                    f"Nice one, {p_name}.",
+                    f"Nice one you Automation Expert, {p_name}.",
                     f"Automation instincts on point, {p_name}.",
-                    f"Good read, {p_name}.",
+                    f"Good Job, {p_name}.",
                 ]
             else:
                 options = [
                     f"Not this time, {p_name}.",
                     f"Close—stay sharp, {p_name}.",
                     f"Good effort, {p_name}.",
-                    f"Next one is yours, {p_name}.",
-                    f"Keep going, {p_name}.",
+                    f"Next one ask Andreas Pilling, {p_name}.",
+                    f"You needed this training apparently, {p_name}.",
                 ]
             feedback_msg = random.choice(options)
 
