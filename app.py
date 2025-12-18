@@ -2,16 +2,27 @@ import eventlet
 eventlet.monkey_patch()
 
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 import time
 import random
 
 app = Flask(__name__)
-# A unique secret key prevents session conflicts
-app.config['SECRET_KEY'] = 'dhl_bulletproof_final_v13'
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+app.config["SECRET_KEY"] = "dhl_bulletproof_v15"
 
-# --- QUESTIONS DATA ---
+socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+
+# ----------------------------
+# CONFIG
+# ----------------------------
+ROUND_SECONDS = 10          # REQUIRED: round duration is exactly 10s
+EVAL_BUFFER_SECONDS = 1.5   # small buffer to let packets arrive (not visible to users)
+DISCONNECT_GRACE_SECONDS = 300  # keep player for 5 min for reconnect; then cleanup
+
+HOST_ROOM = "host_room"
+
+# ----------------------------
+# QUESTIONS
+# ----------------------------
 QUESTIONS = [
     {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "ans_text": "IDEAL (Uniform)", "exp": "Good! Uniformity is easy for robots."},
     {"id": 2, "text": "We sell fragile glass items and wine bottles", "target": 100, "ans_text": "CHALLENGING (Fragile)", "exp": "Challenging. Requires complex, expensive grippers and items can be too fragile."},
@@ -37,227 +48,360 @@ QUESTIONS = [
     {"id": 22, "text": "Multiple packing sizes needed", "target": 100, "ans_text": "CHALLENGING (Multi Pack)", "exp": "Challenging. Machine changeover takes time."},
     {"id": 23, "text": "Low or no Product VAS requirement", "target": 0, "ans_text": "IDEAL (No VAS)", "exp": "Good! Pick -> Pack -> Ship."},
     {"id": 24, "text": "Fashion + Food + General Merchandise (High Mix)", "target": 100, "ans_text": "CHALLENGING (Contamination)", "exp": "Challenging. Cross-contamination issues."},
-    {"id": 25, "text": "High Volume, Low Variation", "target": 0, "ans_text": "IDEAL (The Dream)", "exp": "Good! The perfect scenario for automation."}
+    {"id": 25, "text": "High Volume, Low Variation", "target": 0, "ans_text": "IDEAL (The Dream)", "exp": "Good! The perfect scenario for automation."},
 ]
 
-# --- GAME STATE ---
-current_q_index = -1 
-players = {} 
-answers = {} 
-question_start_time = 0
+# ----------------------------
+# GAME STATE
+# ----------------------------
+current_q_index = -1
+round_active = False
+question_start_time = 0.0
+current_round_id = 0
 
-@app.route('/')
+# Players keyed by persistent token:
+# players[token] = {
+#   "token": str, "sid": str|None, "name": str, "score": int, "streak": int,
+#   "connected": bool, "last_seen": float
+# }
+players = {}
+
+# reverse mapping: sid -> token
+sid_to_token = {}
+
+# answers keyed by token: answers[token] = {"val": int, "time": float}
+answers = {}
+
+# ----------------------------
+# ROUTES
+# ----------------------------
+@app.route("/")
 def index():
-    return render_template('player.html')
+    return render_template("player.html")
 
-@app.route('/host')
+@app.route("/host")
 def host():
-    return render_template('host.html')
+    return render_template("host.html")
 
-# --- SOCKET EVENTS ---
+# ----------------------------
+# HELPERS
+# ----------------------------
+def now_ts() -> float:
+    return time.time()
 
-@socketio.on('join_game')
-def handle_join(data):
-    name = data.get('name', 'Anonymous')
-    players[request.sid] = {'name': name, 'score': 0, 'streak': 0}
-    emit('wait_screen', {'msg': f"Welcome {name}! Waiting for host..."}, to=request.sid)
+def normalize_name(name: str) -> str:
+    return (name or "Anonymous").strip().upper()[:30]
+
+def sorted_leaderboard(limit=None):
+    lb = [{"name": p["name"], "score": p["score"]} for p in players.values()]
+    lb.sort(key=lambda x: x["score"], reverse=True)
+    return lb if limit is None else lb[:limit]
+
+def cleanup_stale_players():
+    """Remove players who have been disconnected longer than grace period."""
+    cutoff = now_ts() - DISCONNECT_GRACE_SECONDS
+    to_delete = []
+    for token, p in players.items():
+        if not p.get("connected", False) and p.get("last_seen", 0) < cutoff:
+            to_delete.append(token)
+    for token in to_delete:
+        players.pop(token, None)
+    if to_delete:
+        update_host_stats()
+
+def update_host_stats():
+    # only count connected players for host UI
+    connected_players = [p for p in players.values() if p.get("connected")]
+    connected_count = len(connected_players)
+
+    ideal = 0
+    challenging = 0
+    for a in answers.values():
+        if int(a["val"]) == 0:
+            ideal += 1
+        elif int(a["val"]) == 100:
+            challenging += 1
+
+    # names only for host (privacy)
+    names = [p["name"] for p in connected_players]
+
+    emit(
+        "update_stats",
+        {
+            "count": connected_count,
+            "answers": len(answers),
+            "names": names,
+            "votes": {"ideal": ideal, "challenging": challenging},
+        },
+        to=HOST_ROOM,
+    )
+
+def round_timer_task(round_id: int):
+    eventlet.sleep(ROUND_SECONDS + EVAL_BUFFER_SECONDS)
+    evaluate_round(round_id)
+
+def evaluate_round(round_id: int):
+    global round_active
+
+    # Ignore stale timers
+    if round_id != current_round_id:
+        return
+    if not round_active:
+        return
+
+    round_active = False
+
+    if current_q_index < 0 or current_q_index >= len(QUESTIONS):
+        return
+
+    q = QUESTIONS[current_q_index]
+    target = int(q["target"])
+
+    # snapshot answers to avoid mutation during scoring
+    answers_snapshot = dict(answers)
+
+    # Identify fastest correct
+    correct = []
+    for token, ans in answers_snapshot.items():
+        try:
+            if int(ans["val"]) == target:
+                correct.append({"token": token, "time": float(ans["time"])})
+        except Exception:
+            continue
+
+    fastest_token = None
+    if correct:
+        correct.sort(key=lambda x: x["time"])
+        fastest_token = correct[0]["token"]
+
+    # Score players (including disconnected; emissions only to connected)
+    for token, p in list(players.items()):
+        try:
+            p_name = p["name"]
+            points = 0
+            streak_bonus = False
+            is_correct = False
+            is_fastest = False
+
+            if token in answers_snapshot:
+                player_val = int(answers_snapshot[token]["val"])
+                if player_val == target:
+                    is_correct = True
+                    points = 100
+                    if token == fastest_token:
+                        points += 30
+                        is_fastest = True
+
+            if is_correct:
+                p["streak"] += 1
+                if p["streak"] == 3:
+                    points += 20
+                    p["streak"] = 0
+                    streak_bonus = True
+            else:
+                p["streak"] = 0
+
+            p["score"] += points
+
+            # feedback message
+            if is_correct:
+                options = [
+                    f"Well done {p_name}.",
+                    f"Strong call, {p_name}.",
+                    f"Nice one, {p_name}.",
+                    f"Automation instincts on point, {p_name}.",
+                    f"Good read, {p_name}.",
+                ]
+            else:
+                options = [
+                    f"Not this time, {p_name}.",
+                    f"Close—stay sharp, {p_name}.",
+                    f"Good effort, {p_name}.",
+                    f"Next one is yours, {p_name}.",
+                    f"Keep going, {p_name}.",
+                ]
+            feedback_msg = random.choice(options)
+
+            # send feedback only if connected and has sid
+            if p.get("connected") and p.get("sid"):
+                emit(
+                    "feedback",
+                    {
+                        "correct": is_correct,
+                        "is_fastest": is_fastest,
+                        "points": points,
+                        "streak_bonus": streak_bonus,
+                        "correct_text": q["ans_text"],
+                        "explanation": q["exp"],
+                        "random_msg": feedback_msg,
+                    },
+                    to=p["sid"],
+                )
+        except Exception as e:
+            print(f"Error scoring/sending feedback for token {token}: {e}")
+
+    # Host reveal (host only)
+    emit(
+        "host_round_end",
+        {"correct_text": q["ans_text"], "explanation": q["exp"]},
+        to=HOST_ROOM,
+    )
+
+    # Leaderboard checkpoints (broadcast to all clients)
+    q_num = current_q_index + 1
+    if q_num == 12 or q_num == 25:
+        is_winner = (q_num == 25)
+        eventlet.sleep(1)
+        emit(
+            "show_leaderboard_all",
+            {"leaderboard": sorted_leaderboard(limit=6), "is_winner": is_winner},
+            broadcast=True,
+        )
+
     update_host_stats()
 
-@socketio.on('host_start_q')
-def start_question(data):
-    global current_q_index, question_start_time, answers
-    
-    # Stop if we went past the last question
+# ----------------------------
+# SOCKET EVENTS
+# ----------------------------
+@socketio.on("join_host")
+def handle_join_host(_data=None):
+    join_room(HOST_ROOM)
+    update_host_stats()
+
+@socketio.on("join_game")
+def handle_join_game(data):
+    # token-based identity (no name collisions)
+    sid = request.sid
+    token = (data or {}).get("token", "").strip()
+    name = normalize_name((data or {}).get("name", ""))
+
+    if not token:
+        # refuse silent invalid joins
+        emit("wait_screen", {"msg": "Missing token. Please refresh."}, to=sid)
+        return
+
+    # If token exists, reconnect. If not, create.
+    if token not in players:
+        players[token] = {
+            "token": token,
+            "sid": sid,
+            "name": name,
+            "score": 0,
+            "streak": 0,
+            "connected": True,
+            "last_seen": now_ts(),
+        }
+        print(f"NEW PLAYER: {name} ({token})")
+    else:
+        # reconnect/update
+        players[token]["sid"] = sid
+        players[token]["connected"] = True
+        players[token]["last_seen"] = now_ts()
+        # If user changed name, update (optional, keep normalized)
+        if name:
+            players[token]["name"] = name
+        print(f"RECONNECTED: {players[token]['name']} ({token})")
+
+    sid_to_token[sid] = token
+
+    emit("wait_screen", {"msg": f"Welcome {players[token]['name']}! Waiting for host..."}, to=sid)
+    cleanup_stale_players()
+    update_host_stats()
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    sid = request.sid
+    token = sid_to_token.pop(sid, None)
+    if token and token in players:
+        players[token]["connected"] = False
+        players[token]["sid"] = None
+        players[token]["last_seen"] = now_ts()
+        print(f"DISCONNECT: {players[token]['name']} ({token})")
+        cleanup_stale_players()
+        update_host_stats()
+
+@socketio.on("host_start_q")
+def start_question(_data=None):
+    global current_q_index, question_start_time, answers, round_active, current_round_id
+
+    cleanup_stale_players()
+
+    if round_active:
+        return
     if current_q_index >= len(QUESTIONS) - 1:
         return
 
     current_q_index += 1
     q = QUESTIONS[current_q_index]
-    answers = {} 
-    question_start_time = time.time()
-    
-    # 1. Send Question to Everyone
-    emit('new_question', {
-        'q_id': current_q_index + 1,
-        'text': q['text'],
-        'duration': 10
-    }, broadcast=True)
-    
+
+    answers = {}
+    question_start_time = now_ts()
+    round_active = True
+    current_round_id += 1
+    round_id = current_round_id
+
+    # Broadcast question to everyone (host + players)
+    emit(
+        "new_question",
+        {"q_id": current_q_index + 1, "text": q["text"], "duration": ROUND_SECONDS},
+        broadcast=True,
+    )
+
     update_host_stats()
 
-    # 2. SERVER TIMER (10s + 2s buffer)
-    eventlet.sleep(12) 
-    
-    # 3. TRIGGER RESULTS
-    evaluate_round()
+    # background evaluation (non-blocking)
+    socketio.start_background_task(round_timer_task, round_id)
 
-def evaluate_round():
-    q = QUESTIONS[current_q_index]
-    target = int(q['target'])
-    
-    # A. Identify Correct Answers (Safe Logic)
-    correct_sids = []
-    for sid, ans in answers.items():
-        try:
-            val = int(ans['val'])
-            if val == target:
-                correct_sids.append({'sid': sid, 'time': ans['time']})
-        except:
-            continue # Skip malformed data
-            
-    # B. Find Fastest
-    fastest_sid = None
-    if correct_sids:
-        correct_sids.sort(key=lambda x: x['time'])
-        fastest_sid = correct_sids[0]['sid']
-
-    # C. Score Every Player
-    # Use list(players.keys()) to prevent "RuntimeError: dictionary changed size"
-    for sid in list(players.keys()):
-        try:
-            p_name = players[sid]['name']
-            points = 0
-            streak_bonus = False
-            is_correct = False
-            is_fastest = False
-            
-            # Did they answer?
-            if sid in answers:
-                player_val = int(answers[sid]['val'])
-                
-                # Check Answer
-                if player_val == target:
-                    is_correct = True
-                    points = 100
-                    
-                    if sid == fastest_sid:
-                        points += 30 # BONUS
-                        is_fastest = True
-            
-            # Streak Logic (Strict 3 in a row)
-            if is_correct:
-                players[sid]['streak'] += 1
-                if players[sid]['streak'] == 3:
-                    points += 20 # BONUS
-                    players[sid]['streak'] = 0 # Reset
-                    streak_bonus = True
-            else:
-                players[sid]['streak'] = 0
-                
-            players[sid]['score'] += points
-            
-            # Generate Message
-            feedback_msg = ""
-            if is_correct:
-                options = [
-                    f"Good Job {p_name}!",
-                    f"You are a rockstar {p_name}!",
-                    f"Are you interested to move to the Automation team {p_name}?",
-                    "Someone knows his/her automation 😉",
-                    "Look at you 😃 you Automation Expert!"
-                ]
-                feedback_msg = random.choice(options)
-            else:
-                options = [
-                    f"Bad job {p_name}!",
-                    f"Focus {p_name}!",
-                    f"Apparently you need this Automation Training {p_name}",
-                    f"Better Ask Andreas Pilling {p_name}",
-                    "What a disappointment!"
-                ]
-                feedback_msg = random.choice(options)
-
-            # Send Feedback
-            emit('feedback', {
-                'correct': is_correct,
-                'is_fastest': is_fastest,
-                'points': points,
-                'streak_bonus': streak_bonus,
-                'correct_text': q['ans_text'],
-                'explanation': q['exp'],
-                'random_msg': feedback_msg
-            }, to=sid)
-            
-        except Exception as e:
-            # If a player disconnected during the round, ignore them
-            continue
-
-    # D. Update Host
-    emit('host_round_end', {
-        'correct_text': q['ans_text'],
-        'explanation': q['exp'] 
-    }, broadcast=True)
-
-    # E. Auto-Leaderboard Trigger (Q12 & Q25)
-    q_num = current_q_index + 1
-    if q_num == 12 or q_num == 25:
-        is_winner = (q_num == 25)
-        eventlet.sleep(3) # Wait 3s so players see their result first
-        emit('show_leaderboard_all', {
-            'leaderboard': sorted_leaderboard()[:6],
-            'is_winner': is_winner
-        }, broadcast=True)
-
-@socketio.on('submit_answer')
+@socketio.on("submit_answer")
 def handle_answer(data):
-    if request.sid not in players: return
-    
-    # Late submission check
-    time_taken = time.time() - question_start_time
-    if time_taken > 15: return 
-    
+    global answers
+
+    sid = request.sid
+    token = sid_to_token.get(sid)
+    if not token or token not in players:
+        return
+    if not round_active:
+        return
+
+    # enforce server truth: accept answers only within ROUND_SECONDS
+    time_taken = now_ts() - question_start_time
+    if time_taken < 0 or time_taken > ROUND_SECONDS:
+        return
+
     try:
-        val = int(data['value'])
-        answers[request.sid] = {'val': val, 'time': time_taken}
+        val = int((data or {}).get("value"))
+        if val not in (0, 100):
+            return
+        answers[token] = {"val": val, "time": float(time_taken)}
         update_host_stats()
-    except:
-        pass
+    except Exception:
+        return
 
-def update_host_stats():
-    # Calculate Vote Split
-    ideal = 0
-    challenging = 0
-    for a in answers.values():
-        if int(a['val']) == 0: ideal += 1
-        elif int(a['val']) == 100: challenging += 1
-
-    player_names = [p['name'] for p in players.values()]
-    
-    emit('update_stats', {
-        'count': len(players), 
-        'answers': len(answers), 
-        'names': player_names,
-        'votes': {'ideal': ideal, 'challenging': challenging}
-    }, broadcast=True)
-
-@socketio.on('host_trigger_leaderboard')
+@socketio.on("host_trigger_leaderboard")
 def trigger_leaderboard():
     is_winner = (current_q_index >= 24)
-    emit('show_leaderboard_all', {
-        'leaderboard': sorted_leaderboard()[:6],
-        'is_winner': is_winner
-    }, broadcast=True)
+    emit(
+        "show_leaderboard_all",
+        {"leaderboard": sorted_leaderboard(limit=6), "is_winner": is_winner},
+        broadcast=True,
+    )
 
-@socketio.on('host_hide_leaderboard')
+@socketio.on("host_hide_leaderboard")
 def hide_leaderboard():
-    emit('hide_leaderboard_all', {}, broadcast=True)
+    emit("hide_leaderboard_all", {}, broadcast=True)
 
-@socketio.on('host_reset_game')
+@socketio.on("host_reset_game")
 def reset_game():
-    global current_q_index, players, answers
+    global current_q_index, players, answers, round_active, current_round_id
     current_q_index = -1
     answers = {}
     players = {}
-    
-    # FORCE RELOAD ALL CLIENTS (Kicks them out)
-    emit('force_reload', {}, broadcast=True)
-    
-    # Confirm reset to Host
-    emit('reset_confirm', {}, broadcast=True)
+    sid_to_token.clear()
+    round_active = False
+    current_round_id += 1  # invalidate any running timer tasks
 
-def sorted_leaderboard():
-    lb = [{'name': p['name'], 'score': p['score']} for p in players.values()]
-    return sorted(lb, key=lambda x: x['score'], reverse=True)
+    emit("force_reload", {}, broadcast=True)
+    emit("reset_confirm", {}, broadcast=True)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     socketio.run(app, debug=True)
