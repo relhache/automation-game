@@ -7,10 +7,11 @@ import time
 import random
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_ultimate_final_v11'
+# A unique secret key prevents session conflicts
+app.config['SECRET_KEY'] = 'dhl_bulletproof_final_v13'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
-# --- CUSTOM QUESTIONS LIST ---
+# --- QUESTIONS DATA ---
 QUESTIONS = [
     {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "ans_text": "IDEAL (Uniform)", "exp": "Good! Uniformity is easy for robots."},
     {"id": 2, "text": "We sell fragile glass items and wine bottles", "target": 100, "ans_text": "CHALLENGING (Fragile)", "exp": "Challenging. Requires complex, expensive grippers and items can be too fragile."},
@@ -66,6 +67,7 @@ def handle_join(data):
 def start_question(data):
     global current_q_index, question_start_time, answers
     
+    # Stop if we went past the last question
     if current_q_index >= len(QUESTIONS) - 1:
         return
 
@@ -74,6 +76,7 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
+    # 1. Send Question to Everyone
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
@@ -82,96 +85,114 @@ def start_question(data):
     
     update_host_stats()
 
-    # SERVER AUTOMATION TIMER
+    # 2. SERVER TIMER (12s + 2s buffer)
     eventlet.sleep(14) 
     
-    # TRIGGER EVALUATION
+    # 3. TRIGGER RESULTS
     evaluate_round()
 
 def evaluate_round():
     q = QUESTIONS[current_q_index]
     target = int(q['target'])
     
-    # 1. Identify Correct & Fastest
+    # A. Identify Correct Answers (Safe Logic)
     correct_sids = []
     for sid, ans in answers.items():
-        if int(ans['val']) == target:
-            correct_sids.append({'sid': sid, 'time': ans['time']})
+        try:
+            val = int(ans['val'])
+            if val == target:
+                correct_sids.append({'sid': sid, 'time': ans['time']})
+        except:
+            continue # Skip malformed data
             
+    # B. Find Fastest
     fastest_sid = None
     if correct_sids:
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
-    # 2. Assign Points & Generate Messages
-    for sid in players:
-        p_name = players[sid]['name']
-        points = 0
-        streak_bonus = False
-        is_correct = False
-        is_fastest = False
-        
-        if sid in answers:
-            if int(answers[sid]['val']) == target:
-                is_correct = True
-                points = 100
-                if sid == fastest_sid:
-                    points += 30
-                    is_fastest = True
-        
-        if is_correct:
-            players[sid]['streak'] += 1
-            if players[sid]['streak'] == 3:
-                points += 20
-                players[sid]['streak'] = 0
-                streak_bonus = True
-        else:
-            players[sid]['streak'] = 0
+    # C. Score Every Player
+    # Use list(players.keys()) to prevent "RuntimeError: dictionary changed size"
+    for sid in list(players.keys()):
+        try:
+            p_name = players[sid]['name']
+            points = 0
+            streak_bonus = False
+            is_correct = False
+            is_fastest = False
             
-        players[sid]['score'] += points
-        
-        # RANDOM MESSAGES
-        feedback_msg = ""
-        if is_correct:
-            options = [
-                f"Good Job {p_name}!",
-                f"You are a rockstar {p_name}!",
-                f"Are you interested to move to the Automation team {p_name}?",
-                "Someone knows his automation 😉",
-                "Look at you 😃 you Automation Expert!"
-            ]
-            feedback_msg = random.choice(options)
-        else:
-            options = [
-                f"Bad job {p_name}!",
-                f"Focus {p_name}!",
-                f"Apparently you need this Automation Training {p_name}",
-                f"Better Ask Andreas {p_name}",
-                "What a disappointment!"
-            ]
-            feedback_msg = random.choice(options)
+            # Did they answer?
+            if sid in answers:
+                player_val = int(answers[sid]['val'])
+                
+                # Check Answer
+                if player_val == target:
+                    is_correct = True
+                    points = 100
+                    
+                    if sid == fastest_sid:
+                        points += 30 # BONUS
+                        is_fastest = True
+            
+            # Streak Logic (Strict 3 in a row)
+            if is_correct:
+                players[sid]['streak'] += 1
+                if players[sid]['streak'] == 3:
+                    points += 20 # BONUS
+                    players[sid]['streak'] = 0 # Reset
+                    streak_bonus = True
+            else:
+                players[sid]['streak'] = 0
+                
+            players[sid]['score'] += points
+            
+            # Generate Message
+            feedback_msg = ""
+            if is_correct:
+                options = [
+                    f"Good Job {p_name}!",
+                    f"You are a rockstar {p_name}!",
+                    f"Are you interested to move to the Automation team {p_name}?",
+                    "Someone knows his automation 😉",
+                    "Look at you 😃 you Automation Expert!"
+                ]
+                feedback_msg = random.choice(options)
+            else:
+                options = [
+                    f"Bad job {p_name}!",
+                    f"Focus {p_name}!",
+                    f"Apparently you need this Automation Training {p_name}",
+                    f"Better Ask Andreas {p_name}",
+                    "What a disappointment!"
+                ]
+                feedback_msg = random.choice(options)
 
-        emit('feedback', {
-            'correct': is_correct,
-            'is_fastest': is_fastest,
-            'points': points,
-            'streak_bonus': streak_bonus,
-            'correct_text': q['ans_text'],
-            'explanation': q['exp'],
-            'random_msg': feedback_msg
-        }, to=sid)
+            # Send Feedback
+            emit('feedback', {
+                'correct': is_correct,
+                'is_fastest': is_fastest,
+                'points': points,
+                'streak_bonus': streak_bonus,
+                'correct_text': q['ans_text'],
+                'explanation': q['exp'],
+                'random_msg': feedback_msg
+            }, to=sid)
+            
+        except Exception as e:
+            # If a player disconnected during the round, ignore them
+            continue
 
-    # 3. Update Host (NOW INCLUDES EXPLANATION)
+    # D. Update Host
     emit('host_round_end', {
         'correct_text': q['ans_text'],
         'explanation': q['exp'] 
     }, broadcast=True)
 
-    # 4. Auto-Leaderboard Trigger
+    # E. Auto-Leaderboard Trigger (Q12 & Q25)
     q_num = current_q_index + 1
     if q_num == 12 or q_num == 25:
         is_winner = (q_num == 25)
-        eventlet.sleep(3)
+        eventlet.sleep(3) # Wait 3s so players see their result first
         emit('show_leaderboard_all', {
             'leaderboard': sorted_leaderboard()[:6],
             'is_winner': is_winner
@@ -180,19 +201,25 @@ def evaluate_round():
 @socketio.on('submit_answer')
 def handle_answer(data):
     if request.sid not in players: return
+    
+    # Late submission check
     time_taken = time.time() - question_start_time
     if time_taken > 15: return 
     
-    val = int(data['value'])
-    answers[request.sid] = {'val': val, 'time': time_taken}
-    update_host_stats()
+    try:
+        val = int(data['value'])
+        answers[request.sid] = {'val': val, 'time': time_taken}
+        update_host_stats()
+    except:
+        pass
 
 def update_host_stats():
+    # Calculate Vote Split
     ideal = 0
     challenging = 0
     for a in answers.values():
-        if a['val'] == 0: ideal += 1
-        elif a['val'] == 100: challenging += 1
+        if int(a['val']) == 0: ideal += 1
+        elif int(a['val']) == 100: challenging += 1
 
     player_names = [p['name'] for p in players.values()]
     
@@ -221,7 +248,11 @@ def reset_game():
     current_q_index = -1
     answers = {}
     players = {}
+    
+    # FORCE RELOAD ALL CLIENTS (Kicks them out)
     emit('force_reload', {}, broadcast=True)
+    
+    # Confirm reset to Host
     emit('reset_confirm', {}, broadcast=True)
 
 def sorted_leaderboard():
