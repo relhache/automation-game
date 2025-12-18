@@ -80,13 +80,13 @@ def start_question(data):
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
-        'duration': 12
+        'duration': 10
     }, broadcast=True)
     
     update_host_stats()
 
-    # 2. SERVER TIMER (12s + 2s buffer)
-    eventlet.sleep(14) 
+    # 2. SERVER TIMER (10s + 2s buffer)
+    eventlet.sleep(12) 
     
     # 3. TRIGGER RESULTS
     evaluate_round()
@@ -153,7 +153,7 @@ def evaluate_round():
                     f"Good Job {p_name}!",
                     f"You are a rockstar {p_name}!",
                     f"Are you interested to move to the Automation team {p_name}?",
-                    "Someone knows his automation 😉",
+                    "Someone knows his/her automation 😉",
                     "Look at you 😃 you Automation Expert!"
                 ]
                 feedback_msg = random.choice(options)
@@ -162,7 +162,7 @@ def evaluate_round():
                     f"Bad job {p_name}!",
                     f"Focus {p_name}!",
                     f"Apparently you need this Automation Training {p_name}",
-                    f"Better Ask Andreas {p_name}",
+                    f"Better Ask Andreas Pilling {p_name}",
                     "What a disappointment!"
                 ]
                 feedback_msg = random.choice(options)
