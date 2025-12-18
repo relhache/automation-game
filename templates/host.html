@@ -18,8 +18,6 @@
         .hidden { display: none !important; }
         
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
-        
-        /* ANSWER & EXPLANATION STYLES */
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 22px; }
         .exp-reveal { font-size: 18px; color: #555; font-style: italic; margin-top: 10px; display: block; }
 
@@ -56,7 +54,6 @@
         
         <div id="current_q_box">
             <div id="q_text_host">Waiting to start...</div>
-            
             <span id="q_ans_host" class="ans-reveal hidden"></span>
             <span id="q_exp_host" class="exp-reveal hidden"></span>
         </div>
@@ -116,7 +113,6 @@
             btn.style.background = "#999";
             btn.innerHTML = "Question Running...";
             
-            // Hide previous answer and explanation
             document.getElementById('q_ans_host').classList.add('hidden');
             document.getElementById('q_exp_host').classList.add('hidden');
             
@@ -141,12 +137,10 @@
             btn.style.background = "#2ecc71";
             btn.innerHTML = "Start Next Question";
             
-            // Show Answer
             var ansSpan = document.getElementById('q_ans_host');
             ansSpan.innerHTML = "Correct: " + data.correct_text;
             ansSpan.classList.remove('hidden');
 
-            // Show Explanation
             var expSpan = document.getElementById('q_exp_host');
             expSpan.innerHTML = data.explanation;
             expSpan.classList.remove('hidden');
@@ -167,6 +161,7 @@
 
         socket.on('reset_confirm', function() {
             document.getElementById('status').innerHTML = "Game Reset.";
+            document.getElementById('p_names').innerHTML = ""; // Clear names visually
             document.getElementById('p_bar').style.width = "0%";
             document.getElementById('p_bar').innerHTML = "0/0";
         });
