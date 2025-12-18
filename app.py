@@ -7,10 +7,10 @@ import time
 import random
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_roadrunner_v9'
+app.config['SECRET_KEY'] = 'dhl_ultimate_final_v10'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
-# --- UPDATED QUESTIONS LIST ---
+# --- CUSTOM QUESTIONS LIST ---
 QUESTIONS = [
     {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "ans_text": "IDEAL (Uniform)", "exp": "Good! Uniformity is easy for robots."},
     {"id": 2, "text": "We sell fragile glass items and wine bottles", "target": 100, "ans_text": "CHALLENGING (Fragile)", "exp": "Challenging. Requires complex, expensive grippers and items can be too fragile."},
@@ -39,10 +39,10 @@ QUESTIONS = [
     {"id": 25, "text": "High Volume, Low Variation", "target": 0, "ans_text": "IDEAL (The Dream)", "exp": "Good! The perfect scenario for automation."}
 ]
 
-# --- STATE ---
+# --- GAME STATE ---
 current_q_index = -1 
-players = {} 
-answers = {} 
+players = {} # {sid: {name, score, streak}}
+answers = {} # {sid: {val, time}}
 question_start_time = 0
 
 @app.route('/')
@@ -82,19 +82,20 @@ def start_question(data):
     
     update_host_stats()
 
-    # SERVER AUTOMATION
+    # SERVER AUTOMATION TIMER
     eventlet.sleep(14) 
     
-    # AUTO-REVEAL
+    # TRIGGER EVALUATION
     evaluate_round()
 
 def evaluate_round():
     q = QUESTIONS[current_q_index]
     target = int(q['target'])
     
+    # 1. Identify Correct & Fastest
     correct_sids = []
     for sid, ans in answers.items():
-        # STRICT INT COMPARISON
+        # STRICT INTEGER COMPARISON
         if int(ans['val']) == target:
             correct_sids.append({'sid': sid, 'time': ans['time']})
             
@@ -103,6 +104,7 @@ def evaluate_round():
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
+    # 2. Assign Points & Generate Messages
     for sid in players:
         p_name = players[sid]['name']
         points = 0
@@ -110,29 +112,28 @@ def evaluate_round():
         is_correct = False
         is_fastest = False
         
-        # --- SCORING LOGIC UPDATED ---
+        # Check Answer
         if sid in answers:
-            # Check correctness
             if int(answers[sid]['val']) == target:
                 is_correct = True
                 points = 100
                 if sid == fastest_sid:
-                    points += 30 # NEW: FASTEST BONUS = 30
+                    points += 30 # NEW: FASTEST +30
                     is_fastest = True
         
         # Streak Logic
         if is_correct:
             players[sid]['streak'] += 1
-            if players[sid]['streak'] == 3:
-                points += 20 # NEW: STREAK BONUS = 20
-                players[sid]['streak'] = 0 
+            if players[sid]['streak'] == 3: # Strictly 3 in a row
+                points += 20 # NEW: STREAK +20
+                players[sid]['streak'] = 0 # Reset
                 streak_bonus = True
         else:
-            players[sid]['streak'] = 0
+            players[sid]['streak'] = 0 # Missed one? Reset.
             
         players[sid]['score'] += points
         
-        # --- RANDOM SNARKY/FUN MESSAGES ---
+        # GENERATE RANDOM MESSAGE
         feedback_msg = ""
         if is_correct:
             options = [
@@ -147,7 +148,7 @@ def evaluate_round():
             options = [
                 f"Bad job {p_name}!",
                 f"Focus {p_name}!",
-                f"Apparently you need this training {p_name}",
+                f"Apparently you need this Automation Training {p_name}",
                 f"Better Ask Andreas {p_name}",
                 "What a disappointment!"
             ]
@@ -163,14 +164,16 @@ def evaluate_round():
             'random_msg': feedback_msg
         }, to=sid)
 
+    # 3. Update Host
     emit('host_round_end', {
         'correct_text': q['ans_text']
     }, broadcast=True)
 
+    # 4. Auto-Leaderboard Trigger (Q12 & Q25)
     q_num = current_q_index + 1
     if q_num == 12 or q_num == 25:
         is_winner = (q_num == 25)
-        eventlet.sleep(3)
+        eventlet.sleep(3) # Short pause before popup
         emit('show_leaderboard_all', {
             'leaderboard': sorted_leaderboard()[:6],
             'is_winner': is_winner
@@ -187,6 +190,7 @@ def handle_answer(data):
     update_host_stats()
 
 def update_host_stats():
+    # Calculate Vote Split
     ideal = 0
     challenging = 0
     for a in answers.values():
@@ -214,12 +218,14 @@ def trigger_leaderboard():
 def hide_leaderboard():
     emit('hide_leaderboard_all', {}, broadcast=True)
 
+# --- FORCE RESET ---
 @socketio.on('host_reset_game')
 def reset_game():
     global current_q_index, players, answers
     current_q_index = -1
     answers = {}
     players = {}
+    # KICK ALL PLAYERS
     emit('force_reload', {}, broadcast=True)
     emit('reset_confirm', {}, broadcast=True)
 
