@@ -4,13 +4,13 @@ eventlet.monkey_patch()
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import time
-import random  # Added for random messages
+import random
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dhl_final_random_v8'
+app.config['SECRET_KEY'] = 'dhl_roadrunner_v9'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
-# --- QUESTIONS ---
+# --- UPDATED QUESTIONS LIST ---
 QUESTIONS = [
     {"id": 1, "text": "Products have uniform dimensions (Standard boxes)", "target": 0, "ans_text": "IDEAL (Uniform)", "exp": "Good! Uniformity is easy for robots."},
     {"id": 2, "text": "We sell fragile glass items and wine bottles", "target": 100, "ans_text": "CHALLENGING (Fragile)", "exp": "Challenging. Requires complex, expensive grippers and items can be too fragile."},
@@ -28,7 +28,7 @@ QUESTIONS = [
     {"id": 14, "text": "Multiple dispatch avenues (Parcel + Pallet)", "target": 100, "ans_text": "CHALLENGING (Mixed Channel)", "exp": "Challenging. Requires mixed workflows."},
     {"id": 15, "text": "Low product weight", "target": 0, "ans_text": "IDEAL (Lightweight)", "exp": "Good! Faster, cheaper robots."},
     {"id": 16, "text": "Heavy products (>25kg)", "target": 100, "ans_text": "CHALLENGING (Heavy)", "exp": "Challenging. Safety risks and slow machinery."},
-    {"id": 17, "text": "Limeted number of packing carton sizes (Only 1-2 box types)", "target": 0, "ans_text": "IDEAL (Few Boxes)", "exp": "Good! Simplified inventory."},
+    {"id": 17, "text": "Limited number of packing carton sizes (Only 1-2 box types)", "target": 0, "ans_text": "IDEAL (Few Boxes)", "exp": "Good! Simplified inventory."},
     {"id": 18, "text": "High variability in product barcoding and labelling (Random stickers)", "target": 100, "ans_text": "CHALLENGING (Bad Labels)", "exp": "Challenging. Scanners miss them."},
     {"id": 19, "text": "Multiple independent orders dispatched from different pick areas", "target": 0, "ans_text": "IDEAL (Pick Areas)", "exp": "Good! Conveyors can merge these easily."},
     {"id": 20, "text": "Consolidated orders to customer from multiple picking areas", "target": 100, "ans_text": "CHALLENGING (Consolidation)", "exp": "Challenging. Complex synchronization needed."},
@@ -74,7 +74,6 @@ def start_question(data):
     answers = {} 
     question_start_time = time.time()
     
-    # 1. Send Question
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
@@ -83,10 +82,10 @@ def start_question(data):
     
     update_host_stats()
 
-    # 2. SERVER AUTOMATION
+    # SERVER AUTOMATION
     eventlet.sleep(14) 
     
-    # 3. AUTO-REVEAL
+    # AUTO-REVEAL
     evaluate_round()
 
 def evaluate_round():
@@ -95,6 +94,7 @@ def evaluate_round():
     
     correct_sids = []
     for sid, ans in answers.items():
+        # STRICT INT COMPARISON
         if int(ans['val']) == target:
             correct_sids.append({'sid': sid, 'time': ans['time']})
             
@@ -103,7 +103,6 @@ def evaluate_round():
         correct_sids.sort(key=lambda x: x['time'])
         fastest_sid = correct_sids[0]['sid']
 
-    # SCORING & MESSAGE GENERATION
     for sid in players:
         p_name = players[sid]['name']
         points = 0
@@ -111,18 +110,21 @@ def evaluate_round():
         is_correct = False
         is_fastest = False
         
+        # --- SCORING LOGIC UPDATED ---
         if sid in answers:
+            # Check correctness
             if int(answers[sid]['val']) == target:
                 is_correct = True
                 points = 100
                 if sid == fastest_sid:
-                    points += 10
+                    points += 30 # NEW: FASTEST BONUS = 30
                     is_fastest = True
         
+        # Streak Logic
         if is_correct:
             players[sid]['streak'] += 1
             if players[sid]['streak'] == 3:
-                points += 5
+                points += 20 # NEW: STREAK BONUS = 20
                 players[sid]['streak'] = 0 
                 streak_bonus = True
         else:
@@ -130,10 +132,9 @@ def evaluate_round():
             
         players[sid]['score'] += points
         
-        # --- GENERATE RANDOM MESSAGE ---
+        # --- RANDOM SNARKY/FUN MESSAGES ---
         feedback_msg = ""
         if is_correct:
-            # Random Correct Messages
             options = [
                 f"Good Job {p_name}!",
                 f"You are a rockstar {p_name}!",
@@ -143,7 +144,6 @@ def evaluate_round():
             ]
             feedback_msg = random.choice(options)
         else:
-            # Random Wrong Messages
             options = [
                 f"Bad job {p_name}!",
                 f"Focus {p_name}!",
@@ -152,7 +152,6 @@ def evaluate_round():
                 "What a disappointment!"
             ]
             feedback_msg = random.choice(options)
-        # -------------------------------
 
         emit('feedback', {
             'correct': is_correct,
@@ -161,7 +160,7 @@ def evaluate_round():
             'streak_bonus': streak_bonus,
             'correct_text': q['ans_text'],
             'explanation': q['exp'],
-            'random_msg': feedback_msg # Send the specific message
+            'random_msg': feedback_msg
         }, to=sid)
 
     emit('host_round_end', {
@@ -188,7 +187,6 @@ def handle_answer(data):
     update_host_stats()
 
 def update_host_stats():
-    # Vote Balance
     ideal = 0
     challenging = 0
     for a in answers.values():
@@ -216,14 +214,12 @@ def trigger_leaderboard():
 def hide_leaderboard():
     emit('hide_leaderboard_all', {}, broadcast=True)
 
-# --- FORCE RESET LOGIC ---
 @socketio.on('host_reset_game')
 def reset_game():
     global current_q_index, players, answers
     current_q_index = -1
     answers = {}
-    players = {} # WIPE ALL PLAYERS
-    # Send Command to RELOAD everyone's screen
+    players = {}
     emit('force_reload', {}, broadcast=True)
     emit('reset_confirm', {}, broadcast=True)
 
