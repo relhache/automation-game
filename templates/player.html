@@ -15,29 +15,29 @@
         }
         
         .box { 
-            background: white; padding: 20px; border-radius: 8px; margin-top: 20px; 
+            background: white; padding: 20px; border-radius: 8px; margin-top: 10px; 
             border-bottom: 5px solid #D40511; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
             transition: box-shadow 0.5s ease;
         }
         
+        /* PLAYER NAME BADGE */
+        .player-badge { font-size: 14px; font-weight: bold; background: #FFCC00; color: #D40511; padding: 5px 15px; border-radius: 20px; display: inline-block; margin-bottom: 10px;}
+
         input[type=text] { padding: 12px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; }
         
         button { background: #D40511; color: white; border: none; padding: 15px; font-size: 18px; width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: background 0.3s;}
         button:disabled { background: #999; cursor: not-allowed; }
         .hidden { display: none !important; }
         
-        /* SLIDER STYLING */
+        /* SLIDER */
         input[type=range] { 
             width: 100%; height: 40px; -webkit-appearance: none; appearance: none;
-            background: #ccc; /* Default Grey */
-            border-radius: 20px; outline: none; margin: 25px 0; cursor: pointer; 
+            background: #ccc; border-radius: 20px; outline: none; margin: 25px 0; cursor: pointer; 
         }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none; appearance: none; width: 40px; height: 40px;
             background: white; border: 4px solid #555; border-radius: 50%; cursor: pointer;
         }
-        
-        /* BLUE Class for when user moves it */
         .slider-blue { background: #007bff !important; }
         
         .labels { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-transform: uppercase; }
@@ -46,17 +46,17 @@
         
         #timer_bar { height: 10px; background: #FFCC00; width: 100%; border-radius: 5px; transition: width 1s linear; }
         
-        /* LEADERBOARD OVERLAY */
         .lb-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.98); z-index:9999; padding-top: 20px; overflow-y: auto;}
         table { width: 90%; margin: 0 auto; border-collapse: collapse; }
         th { background: #FFCC00; color: #D40511; padding: 10px; }
         td { border-bottom: 1px solid #ddd; padding: 10px; font-size: 16px; }
-        .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; animation: pop 0.5s infinite alternate; }
-        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.1); } }
+        .winner-txt { font-size: 30px; color: #D40511; font-weight: bold; margin: 20px 0; }
     </style>
 </head>
 <body>
     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/DHL_Logo.svg/320px-DHL_Logo.svg.png" width="160">
+    <br>
+    <div id="player_display" class="player-badge hidden"></div>
 
     <div id="login_screen" class="box">
         <h3>Join Game</h3>
@@ -84,8 +84,9 @@
     </div>
 
     <div id="feedback_screen" class="hidden box">
-        <h2 id="fb_title"></h2>
-        <p>Correct: <span id="fb_ans" style="font-weight:bold;"></span></p>
+        <h2 id="fb_random_msg" style="color:#D40511; margin-bottom:10px;"></h2>
+        
+        <p>Correct Answer: <span id="fb_ans" style="font-weight:bold;"></span></p>
         <h2 id="fb_pts" style="color:#D40511; font-size:40px;"></h2>
         <div id="fb_bonuses"></div>
         <p id="fb_exp" style="color:#666; font-style:italic; margin-top:15px; border-top:1px solid #eee; padding-top:10px;"></p>
@@ -109,9 +110,7 @@
         var sliderTxt = document.getElementById('slider_val');
         
         slider.oninput = function() {
-            // Logic: 50=Grey, 0=Blue, 100=Blue
             slider.classList.remove('slider-blue');
-            
             if (this.value == "0") {
                 slider.classList.add('slider-blue');
                 sliderTxt.innerHTML = "Selection: IDEAL";
@@ -129,10 +128,20 @@
         function joinGame() {
             var name = document.getElementById('username').value;
             if(!name) return alert("Enter Name");
+            
+            // Set Name on Screen
+            document.getElementById('player_display').innerHTML = "Player: " + name;
+            document.getElementById('player_display').classList.remove('hidden');
+            
             socket.emit('join_game', {name: name});
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.remove('hidden');
         }
+
+        // FORCE RELOAD ON RESET
+        socket.on('force_reload', function() {
+            window.location.reload();
+        });
 
         socket.on('wait_screen', function(data) {
             document.getElementById('wait_msg').innerHTML = data.msg;
@@ -143,14 +152,13 @@
             document.getElementById('lb_overlay').classList.add('hidden');
             var gameBox = document.getElementById('game_screen');
             gameBox.classList.remove('hidden');
-            gameBox.style.boxShadow = "0 4px 15px rgba(0,0,0,0.1)"; // Reset Heat
+            gameBox.style.boxShadow = "0 4px 15px rgba(0,0,0,0.1)";
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.add('hidden');
             document.getElementById('feedback_screen').classList.add('hidden');
 
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
-            // RESET Slider
             slider.value = 50;
             slider.classList.remove('slider-blue');
             sliderTxt.innerHTML = "Slide Left or Right";
@@ -170,12 +178,7 @@
             currentTimer = setInterval(function() {
                 timeLeft--;
                 bar.style.width = (timeLeft/totalTime * 100) + "%";
-                
-                // HEAT EFFECT (< 5s)
-                if(timeLeft < 5) {
-                    gameBox.style.boxShadow = "0 0 25px rgba(212, 5, 17, 0.6)"; 
-                }
-
+                if(timeLeft < 5) gameBox.style.boxShadow = "0 0 25px rgba(212, 5, 17, 0.6)"; 
                 if(timeLeft <= 0) {
                     clearInterval(currentTimer);
                     btn.disabled = true;
@@ -197,17 +200,18 @@
 
         socket.on('feedback', function(data) {
             showScreen('feedback_screen');
-            var title = document.getElementById('fb_title');
             
-            // Feedback Colors (Green/Red) appear HERE
+            // SHOW RANDOM MESSAGE AS MAIN TITLE
+            var title = document.getElementById('fb_random_msg');
+            title.innerHTML = data.random_msg;
+            
             if(data.correct) {
-                title.innerHTML = "✅ CORRECT";
                 title.style.color = "green";
                 try { confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#D40511', '#FFCC00'] }); } catch(e){}
             } else {
-                title.innerHTML = "❌ WRONG";
                 title.style.color = "#D40511";
             }
+            
             document.getElementById('fb_ans').innerHTML = data.correct_text;
             document.getElementById('fb_pts').innerHTML = "+" + data.points;
             document.getElementById('fb_exp').innerHTML = data.explanation;
@@ -224,7 +228,6 @@
             data.leaderboard.forEach((p, i) => {
                 table.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`;
             });
-            
             if(data.is_winner && data.leaderboard.length > 0) {
                 document.getElementById('winner_section').classList.remove('hidden');
                 document.getElementById('winner_name').innerHTML = data.leaderboard[0].name;
