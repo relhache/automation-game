@@ -95,13 +95,13 @@ def start_question(data):
     emit('new_question', {
         'q_id': current_q_index + 1,
         'text': q['text'],
-        'duration': 12
+        'duration': 10
     }, broadcast=True)
     
     update_host_stats()
 
     # SERVER TIMER
-    eventlet.sleep(14) 
+    eventlet.sleep(12) 
     
     # TRIGGER RESULTS
     evaluate_round()
