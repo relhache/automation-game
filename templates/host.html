@@ -20,12 +20,11 @@
         #current_q_box { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 5px solid #FFCC00; }
         .ans-reveal { font-weight: bold; color: green; display: block; margin-top: 5px; font-size: 20px; }
 
-        /* VOTE BAR CSS */
+        /* VOTE BAR */
         .vote-bar-container { display: flex; width: 100%; height: 25px; border-radius: 12px; overflow: hidden; margin-top: 5px; background: #ddd; }
         .vote-ideal { background: #2ecc71; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
         .vote-challenging { background: #D40511; color: white; font-size: 12px; line-height: 25px; transition: width 0.5s; }
 
-        /* Modal */
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index: 9999;}
         .modal-content { background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 600px; text-align: center; border: 5px solid #FFCC00; }
         table { width: 100%; border-collapse: collapse; }
@@ -89,7 +88,6 @@
                 document.getElementById('p_bar').innerHTML = data.answers + "/" + data.count;
             }
 
-            // VOTE BAR UPDATE
             if(data.votes) {
                 var total = data.votes.ideal + data.votes.challenging;
                 if(total > 0) {
@@ -122,7 +120,6 @@
 
         socket.on('new_question', function(data) {
             document.getElementById('q_text_host').innerHTML = "Q" + data.q_id + ": " + data.text;
-            // Reset votes
             document.getElementById('v_ideal').style.width = "50%";
             document.getElementById('v_ideal').innerHTML = "0";
             document.getElementById('v_challenging').style.width = "50%";
@@ -153,6 +150,12 @@
 
         socket.on('hide_leaderboard_all', function() {
             document.getElementById('lb_modal').classList.add('hidden');
+        });
+
+        socket.on('reset_confirm', function() {
+            document.getElementById('status').innerHTML = "Game Reset.";
+            document.getElementById('p_bar').style.width = "0%";
+            document.getElementById('p_bar').innerHTML = "0/0";
         });
 
         function showLeaderboardAll() { socket.emit('host_trigger_leaderboard'); }
