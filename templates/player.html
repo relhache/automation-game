@@ -154,6 +154,7 @@
             document.getElementById('wait_screen').classList.remove('hidden');
         }
 
+        // FORCE RELOAD (Reset Kick Logic)
         socket.on('force_reload', function() { window.location.reload(); });
 
         socket.on('wait_screen', function(data) {
@@ -169,7 +170,9 @@
             document.getElementById('login_screen').classList.add('hidden');
             document.getElementById('wait_screen').classList.add('hidden');
             document.getElementById('feedback_screen').classList.add('hidden');
+            
             document.getElementById('rr_gif').classList.add('hidden');
+
             document.getElementById('q_text').innerHTML = "Q" + data.q_id + ": " + data.text;
             
             slider.value = 50;
